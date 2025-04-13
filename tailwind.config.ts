@@ -84,6 +84,14 @@ export default {
 					DEFAULT: '#0EA5E9',
 					hover: '#0284C7',
 				},
+        harvard: {
+          crimson: '#A51C30',
+          crimsonLight: '#C90016',
+          crimsonDark: '#7f1a25',
+          black: '#000000',
+          white: '#FFFFFF',
+          grey: '#8E9196',
+        },
 			},
 			fontFamily: {
 				sans: ['Inter var', 'sans-serif'],

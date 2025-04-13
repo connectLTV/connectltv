@@ -1,7 +1,6 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
 
 interface SearchExampleProps {
   setQuery: (query: string) => void;
@@ -30,21 +29,19 @@ const SearchExamples: React.FC<SearchExampleProps> = ({ setQuery, handleSearch }
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto mt-8">
-      <h3 className="text-lg font-medium text-gray-700 mb-3">Try these examples:</h3>
-      <div className="space-y-3">
+    <div className="w-full max-w-4xl mx-auto mt-8">
+      <h3 className="text-base font-medium text-white mb-3 drop-shadow-md">Try these examples:</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {examples.map((example, index) => (
-          <div key={index} className="rounded-lg border p-4 hover:border-accent1 transition-colors">
-            <div className="flex justify-between items-start">
-              <div>
-                <h4 className="font-medium text-brand-800">{example.title}</h4>
-                <p className="text-sm text-gray-600 mt-1">{example.query}</p>
-              </div>
+          <div key={index} className="rounded-lg backdrop-blur-sm bg-white/20 p-4 transition-all hover:bg-white/30 border border-white/30">
+            <div className="flex flex-col h-full">
+              <h4 className="font-medium text-white">{example.title}</h4>
+              <p className="text-xs text-white/90 mt-1 flex-grow">{example.query}</p>
               <Button 
                 variant="outline"
                 size="sm" 
                 onClick={() => handleExampleClick(example.query)} 
-                className="ml-4 mt-1 border-accent1 text-accent1 hover:bg-accent1/10"
+                className="mt-3 border-white/70 text-white hover:bg-white/20 self-end"
               >
                 Try this
               </Button>

@@ -12,6 +12,11 @@ export interface Alumni {
   email: string;
   linkedinUrl: string;
   imageUrl?: string;
+  location?: string;
+  classYear?: string;
+  instructor?: string;
+  industry?: string;
+  function?: string;
 }
 
 // Function to search alumni from Supabase database
@@ -47,7 +52,12 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
       email: record['Email Address'] || '',
       linkedinUrl: record['LinkedIn URL'] || '#',
       relevanceReason: '', // We'll calculate this based on the query
-      imageUrl: undefined
+      imageUrl: undefined,
+      location: record['Location'] || undefined,
+      classYear: record['Class Year'] || undefined,
+      instructor: record['LTV Instructor(s)'] || undefined,
+      industry: extractIndustry(record['Company'] || '', record['Title'] || ''),
+      function: extractFunction(record['Title'] || '')
     }));
     
     // Implement semantic search using the query
@@ -56,6 +66,50 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
     console.error("Error in searchAlumni:", error);
     return [];
   }
+};
+
+// Helper function to extract industry from company and title
+const extractIndustry = (company: string, title: string): string | undefined => {
+  const industries = {
+    tech: ['Google', 'Apple', 'Microsoft', 'Amazon', 'Facebook', 'Meta', 'Tech', 'Software', 'AI', 'Data'],
+    finance: ['Bank', 'Capital', 'Invest', 'Finance', 'Financial', 'Fund', 'Asset', 'Venture'],
+    healthcare: ['Health', 'Care', 'Medical', 'Pharma', 'Hospital', 'Bio', 'Life Sciences'],
+    retail: ['Retail', 'Consumer', 'Shop', 'Store', 'Brand', 'Fashion'],
+    media: ['Media', 'Entertainment', 'News', 'Film', 'TV', 'Television', 'Studio'],
+  };
+  
+  const companyTitle = `${company} ${title}`.toLowerCase();
+  
+  for (const [industry, keywords] of Object.entries(industries)) {
+    if (keywords.some(keyword => companyTitle.includes(keyword.toLowerCase()))) {
+      return industry.charAt(0).toUpperCase() + industry.slice(1);
+    }
+  }
+  
+  return undefined;
+};
+
+// Helper function to extract function from title
+const extractFunction = (title: string): string | undefined => {
+  const functions = {
+    engineering: ['Engineer', 'Developer', 'CTO', 'Technical', 'Architecture'],
+    product: ['Product', 'PM', 'UX', 'User'],
+    marketing: ['Marketing', 'Growth', 'Brand', 'CMO'],
+    sales: ['Sales', 'Business Development', 'Account', 'Revenue'],
+    operations: ['Operations', 'COO', 'Ops', 'Supply'],
+    finance: ['Finance', 'CFO', 'Financial', 'Accounting'],
+    founder: ['Founder', 'CEO', 'Owner', 'Entrepreneur'],
+  };
+  
+  const titleLower = title.toLowerCase();
+  
+  for (const [func, keywords] of Object.entries(functions)) {
+    if (keywords.some(keyword => titleLower.includes(keyword.toLowerCase()))) {
+      return func.charAt(0).toUpperCase() + func.slice(1);
+    }
+  }
+  
+  return undefined;
 };
 
 // Function to rank alumni by relevance to the query
@@ -81,39 +135,51 @@ const rankAlumniByRelevance = (alumni: Alumni[], query: string): Alumni[] => {
         queryLower.includes('founder') ||
         queryLower.includes('path')) {
       // Look for people with founder experience or senior roles
-      if (person.currentTitle.toLowerCase().includes('founder') || 
-          person.currentTitle.toLowerCase().includes('ceo') ||
-          person.currentTitle.toLowerCase().includes('chief')) {
+      if ((person.currentTitle || '').toLowerCase().includes('founder') || 
+          (person.currentTitle || '').toLowerCase().includes('ceo') ||
+          (person.currentTitle || '').toLowerCase().includes('chief')) {
         score += 50;
-        relevanceReason = "Has founder experience, can provide insights on entrepreneurial career paths.";
-      } else if (person.currentTitle.toLowerCase().includes('vp') || 
-                person.currentTitle.toLowerCase().includes('head') ||
-                person.currentTitle.toLowerCase().includes('director')) {
+        relevanceReason = `As a ${person.currentTitle} at ${person.currentCompany}, can provide first-hand insights on founding a venture and the entrepreneurial career path.`;
+      } else if ((person.currentTitle || '').toLowerCase().includes('vp') || 
+                 (person.currentTitle || '').toLowerCase().includes('head') ||
+                 (person.currentTitle || '').toLowerCase().includes('director')) {
         score += 30;
-        relevanceReason = "Has senior leadership experience in established companies.";
+        relevanceReason = `Has senior leadership experience at ${person.currentCompany}, offering perspective on corporate career trajectories and decision-making.`;
+      }
+    }
+    
+    // Check for specific industry expertise
+    const industries = ['fintech', 'healthcare', 'retail', 'saas', 'enterprise', 'consumer', 'b2b', 'marketplace'];
+    for (const industry of industries) {
+      if (queryLower.includes(industry)) {
+        if ((person.currentCompany || '').toLowerCase().includes(industry) || 
+            (person.workExperience || '').toLowerCase().includes(industry)) {
+          score += 45;
+          relevanceReason = `Has direct experience in ${industry} at ${person.currentCompany}.`;
+        }
       }
     }
     
     // Check for industry or domain expertise
     for (const word of queryWords) {
-      if (person.currentCompany.toLowerCase().includes(word) || 
-          person.currentTitle.toLowerCase().includes(word)) {
+      if ((person.currentCompany || '').toLowerCase().includes(word) || 
+          (person.currentTitle || '').toLowerCase().includes(word)) {
         score += 40;
-        relevanceReason = `Direct experience with ${word} in current role.`;
+        relevanceReason = relevanceReason || `Direct experience with ${word} in current role as ${person.currentTitle} at ${person.currentCompany}.`;
       }
     }
     
     // Check for specific company mentions
     for (const word of queryWords) {
-      if (person.workExperience.toLowerCase().includes(word)) {
+      if ((person.workExperience || '').toLowerCase().includes(word)) {
         score += 20;
-        relevanceReason = relevanceReason || `Has experience related to ${word}.`;
+        relevanceReason = relevanceReason || `Has professional experience related to ${word}.`;
       }
     }
     
-    // If no specific relevance was found, create a generic one
+    // If no specific relevance was found, create a more personalized generic one
     if (!relevanceReason && person.currentCompany) {
-      relevanceReason = `Experience at ${person.currentCompany} as ${person.currentTitle} might provide valuable perspective.`;
+      relevanceReason = `Experience as ${person.currentTitle} at ${person.currentCompany} could provide valuable industry insights and perspective on your query.`;
     }
     
     // Add some randomness to avoid same-score clustering

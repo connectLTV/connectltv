@@ -43,6 +43,11 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Harvard Crimson */
+    --harvard-crimson: 0 100% 25%; /* #A51C30 */
+    --harvard-crimson-light: 0 100% 35%; /* #C90016 */
+    --harvard-crimson-dark: 0 100% 20%; /* #7f1a25 */
   }
 
   .dark {
@@ -78,7 +83,7 @@
 }
 
 .bg-gradient-text {
-  background: linear-gradient(to right, #3b82f6, #8b5cf6, #6366f1);
+  background: linear-gradient(to right, #A51C30, #C90016, #7f1a25);
   background-size: 300% 300%;
   background-clip: text;
   -webkit-background-clip: text;
@@ -93,3 +98,47 @@
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
+@keyframes gradient {
+  0%, 100% { background-position: 0% 50% }
+  50% { background-position: 100% 50% }
+}
+
+/* Harvard colors */
+.bg-harvard-crimson {
+  background-color: #A51C30;
+}
+
+.text-harvard-crimson {
+  color: #A51C30;
+}
+
+.border-harvard-crimson {
+  border-color: #A51C30;
+}
+
+.hover\:bg-harvard-crimson:hover {
+  background-color: #A51C30;
+}
+
+/* Animation for the landing page */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 1s ease forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.8s ease forwards;
+}
+
+.animate-gradient {
+  animation: gradient 15s ease infinite;
+}
