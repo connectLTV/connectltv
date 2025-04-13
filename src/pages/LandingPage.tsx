@@ -1,30 +1,13 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
-import SearchExamples from "@/components/SearchExamples";
-
-// Array of campus videos to cycle through
-const backgroundVideos = [
-  "https://assets.lovable.dev/harvard-campus-1.mp4",
-  "https://assets.lovable.dev/harvard-campus-2.mp4",
-  "https://assets.lovable.dev/harvard-campus-3.mp4",
-];
 
 const LandingPage: React.FC = () => {
   const [query, setQuery] = useState("");
-  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const navigate = useNavigate();
-
-  // Change background video every 15 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentVideoIndex((prevIndex) => (prevIndex + 1) % backgroundVideos.length);
-    }, 15000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleSearch = () => {
     if (query.trim()) {
@@ -39,56 +22,56 @@ const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
-      {/* Dynamic video background */}
-      <div className="absolute inset-0 w-full h-full z-0">
-        <div className="absolute inset-0 bg-black/40 z-10"></div>
-        <video
-          key={currentVideoIndex}
-          autoPlay
-          muted
-          loop
-          className="w-full h-full object-cover"
-          playsInline
-        >
-          <source src={backgroundVideos[currentVideoIndex]} type="video/mp4" />
-        </video>
-      </div>
+    <div className="min-h-screen flex flex-col bg-white">
+      {/* Header */}
+      <header className="w-full py-4 px-6 md:px-12">
+        <div className="flex items-center">
+          <h1 className="text-2xl font-bold text-harvard-crimson mr-4">ConnectLTV</h1>
+          <span className="text-gray-600 text-sm">Harvard Business School</span>
+        </div>
+      </header>
 
-      <div className="w-full max-w-3xl text-center relative z-20 px-6">
-        <h1 className="text-6xl md:text-7xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-red-700 via-red-600 to-red-800 animate-gradient">
-          ConnectLTV
-        </h1>
-        
-        <p className="text-lg text-white mb-10 max-w-2xl mx-auto font-medium drop-shadow-lg">
-          Welcome to ConnectLTV – your gateway to a dynamic network of Harvard Business School's Launching Tech Venture alumni. Simply type your query, and ConnectLTV will identify the alumni best suited to support you.
-        </p>
+      {/* Main Content */}
+      <main className="flex-grow flex flex-col items-center justify-center px-4">
+        <div className="w-full max-w-4xl mx-auto text-center mb-16">
+          <h1 className="text-5xl md:text-6xl font-bold mb-6 text-gray-900">
+            Find the perfect alumni connection
+          </h1>
+          <p className="text-lg text-gray-600 mb-10 max-w-2xl mx-auto">
+            Quickly identify the most helpful HBS Launching Tech Ventures alumni for your specific needs
+          </p>
 
-        <div className="mb-8 w-full max-w-2xl mx-auto backdrop-blur-sm bg-white/20 p-6 rounded-xl shadow-xl">
-          <label htmlFor="search-query" className="block text-left text-md font-medium text-white mb-2">
-            What guidance or expertise are you looking for?
-          </label>
-          <div className="relative">
-            <Input
-              id="search-query"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. Founder, Product Manager, Financial Services, Amazon, etc."
-              className="pr-24 h-14 text-base bg-white/90 border-none"
-            />
-            <Button 
-              className="absolute right-1 top-1 bottom-1 bg-red-800 hover:bg-red-900 px-6"
-              onClick={handleSearch}
-            >
-              <Search className="mr-2 h-4 w-4" />
-              Search
-            </Button>
+          <div className="relative w-full max-w-3xl mx-auto">
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden shadow-sm">
+              <div className="flex items-center pl-4 text-gray-400">
+                <Search size={20} />
+              </div>
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Search for alumni expertise, industry, company, role..."
+                className="border-0 h-12 text-base flex-grow"
+              />
+              <Button 
+                onClick={handleSearch}
+                className="h-12 px-6 rounded-none bg-harvard-crimson hover:bg-harvard-crimson-light text-white"
+              >
+                Search
+              </Button>
+            </div>
+            <p className="text-sm text-gray-500 mt-2 text-center">
+              Try searching for "AI startups", "VCs in Boston", or "Product Management experts"
+            </p>
           </div>
         </div>
+      </main>
 
-        <SearchExamples setQuery={setQuery} handleSearch={handleSearch} />
-      </div>
+      {/* Footer */}
+      <footer className="w-full py-8 text-center text-sm text-gray-500">
+        <p>© 2025 Harvard Business School Launching Tech Ventures Alumni Network</p>
+        <p className="mt-1">Connect with 2,500+ alumni spanning 15 years of innovation leadership</p>
+      </footer>
     </div>
   );
 };
