@@ -18,11 +18,11 @@ const ResultsPage: React.FC = () => {
 
   // Filter states
   const [filters, setFilters] = useState({
-    graduationYear: "",
-    location: "",
-    instructor: "",
-    industry: "",
-    function: ""
+    graduationYear: "any",
+    location: "any",
+    instructor: "any",
+    industry: "any",
+    function: "any"
   });
 
   // Derive unique values for filter dropdowns
@@ -33,9 +33,9 @@ const ResultsPage: React.FC = () => {
   // Apply filters to results
   const filteredResults = results.filter(alumni => {
     return (
-      (filters.graduationYear === "" || alumni.classYear === filters.graduationYear) &&
-      (filters.location === "" || alumni.location === filters.location) &&
-      (filters.instructor === "" || alumni.instructor === filters.instructor)
+      (filters.graduationYear === "any" || alumni.classYear === filters.graduationYear) &&
+      (filters.location === "any" || alumni.location === filters.location) &&
+      (filters.instructor === "any" || alumni.instructor === filters.instructor)
       // Industry and function filters would be applied similarly if available in the data
     );
   });
@@ -61,11 +61,11 @@ const ResultsPage: React.FC = () => {
 
   const resetFilters = () => {
     setFilters({
-      graduationYear: "",
-      location: "",
-      instructor: "",
-      industry: "",
-      function: ""
+      graduationYear: "any",
+      location: "any",
+      instructor: "any",
+      industry: "any",
+      function: "any"
     });
   };
 
@@ -102,7 +102,7 @@ const ResultsPage: React.FC = () => {
                   <SelectValue placeholder="Any Year" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any Year</SelectItem>
+                  <SelectItem value="any">Any Year</SelectItem>
                   {uniqueYears.map((year) => (
                     <SelectItem key={year} value={year}>{year}</SelectItem>
                   ))}
@@ -116,7 +116,7 @@ const ResultsPage: React.FC = () => {
                   <SelectValue placeholder="Any Location" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any Location</SelectItem>
+                  <SelectItem value="any">Any Location</SelectItem>
                   {uniqueLocations.map((location) => (
                     <SelectItem key={location} value={location}>{location}</SelectItem>
                   ))}
@@ -130,7 +130,7 @@ const ResultsPage: React.FC = () => {
                   <SelectValue placeholder="Any Instructor" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any Instructor</SelectItem>
+                  <SelectItem value="any">Any Instructor</SelectItem>
                   {uniqueInstructors.map((instructor) => (
                     <SelectItem key={instructor} value={instructor}>{instructor}</SelectItem>
                   ))}
@@ -144,7 +144,7 @@ const ResultsPage: React.FC = () => {
                   <SelectValue placeholder="Any Industry" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any Industry</SelectItem>
+                  <SelectItem value="any">Any Industry</SelectItem>
                   {/* Add industry options when available in data */}
                 </SelectContent>
               </Select>
@@ -156,7 +156,7 @@ const ResultsPage: React.FC = () => {
                   <SelectValue placeholder="Any Function" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any Function</SelectItem>
+                  <SelectItem value="any">Any Function</SelectItem>
                   {/* Add function options when available in data */}
                 </SelectContent>
               </Select>
