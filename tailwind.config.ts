@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -61,7 +62,31 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
-				}
+				},
+				brand: {
+					50: '#f0f7ff',
+					100: '#e0eefe',
+					200: '#bae0fd',
+					300: '#7dc9fc',
+					400: '#39acf7',
+					500: '#1a8eea',
+					600: '#0b6fc9',
+					700: '#0e57a3',
+					800: '#144a87',
+					900: '#164070',
+					950: '#102a4a',
+				},
+				accent1: {
+					DEFAULT: '#8B5CF6',
+					hover: '#7C3AED',
+				},
+				accent2: {
+					DEFAULT: '#0EA5E9',
+					hover: '#0284C7',
+				},
+			},
+			fontFamily: {
+				sans: ['Inter var', 'sans-serif'],
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
@@ -84,12 +109,20 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'gradient': {
+					'0%, 100%': { backgroundPosition: '0% 50%' },
+					'50%': { backgroundPosition: '100% 50%' },
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
-			}
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'gradient': 'gradient 15s ease infinite',
+			},
+			backgroundSize: {
+				'300%': '300%',
+			},
 		}
 	},
 	plugins: [require("tailwindcss-animate")],
