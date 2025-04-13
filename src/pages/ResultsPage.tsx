@@ -47,6 +47,7 @@ const ResultsPage: React.FC = () => {
       setLoading(true);
       try {
         const data = await searchAlumni(query);
+        console.log("Search results:", data);
         setResults(data);
       } catch (error) {
         console.error("Error fetching results:", error);

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
+import SearchExamples from "@/components/SearchExamples";
 
 const LandingPage: React.FC = () => {
   const [query, setQuery] = useState("");
@@ -65,6 +66,9 @@ const LandingPage: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Search Examples */}
+        <SearchExamples setQuery={setQuery} handleSearch={handleSearch} />
       </main>
 
       {/* Footer */}
