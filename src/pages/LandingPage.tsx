@@ -51,7 +51,7 @@ const LandingPage: React.FC = () => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search for alumni expertise, industry, company, role..."
+                placeholder="Describe what you're looking for in natural language..."
                 className="border-0 h-12 text-base flex-grow"
               />
               <Button 
@@ -62,7 +62,7 @@ const LandingPage: React.FC = () => {
               </Button>
             </div>
             <p className="text-sm text-gray-500 mt-2 text-center">
-              Try searching for "AI startups", "VCs in Boston", or "Product Management experts"
+              Try asking for "Alumni in fintech based in New York" or "Product leaders at tech startups from class of 2020"
             </p>
           </div>
         </div>

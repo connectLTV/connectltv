@@ -10,8 +10,9 @@ import AlumniCard from "@/components/AlumniCard";
 import AlumniProfile from "@/components/AlumniProfile";
 
 const ResultsPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("query") || "";
+  const [searchQuery, setSearchQuery] = useState(query);
   const [results, setResults] = useState<Alumni[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAlumni, setSelectedAlumni] = useState<Alumni | null>(null);
@@ -29,17 +30,21 @@ const ResultsPage: React.FC = () => {
   const uniqueYears = [...new Set(results.map(alumni => alumni.classYear).filter(Boolean))];
   const uniqueLocations = [...new Set(results.map(alumni => alumni.location).filter(Boolean))];
   const uniqueInstructors = [...new Set(results.map(alumni => alumni.instructor).filter(Boolean))];
+  const uniqueIndustries = [...new Set(results.map(alumni => alumni.industry).filter(Boolean))];
+  const uniqueFunctions = [...new Set(results.map(alumni => alumni.function).filter(Boolean))];
 
   // Apply filters to results
   const filteredResults = results.filter(alumni => {
     return (
       (filters.graduationYear === "any" || alumni.classYear === filters.graduationYear) &&
       (filters.location === "any" || alumni.location === filters.location) &&
-      (filters.instructor === "any" || alumni.instructor === filters.instructor)
-      // Industry and function filters would be applied similarly if available in the data
+      (filters.instructor === "any" || alumni.instructor === filters.instructor) &&
+      (filters.industry === "any" || alumni.industry === filters.industry) &&
+      (filters.function === "any" || alumni.function === filters.function)
     );
   });
 
+  // Perform search when query changes
   useEffect(() => {
     const fetchResults = async () => {
       if (!query) return;
@@ -73,6 +78,20 @@ const ResultsPage: React.FC = () => {
     setSelectedAlumni(alumni === selectedAlumni ? null : alumni);
   };
 
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      setSearchParams({ query: searchQuery });
+      // Reset selected alumni when performing a new search
+      setSelectedAlumni(null);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -85,8 +104,30 @@ const ResultsPage: React.FC = () => {
             </Link>
           </Button>
           
-          <h1 className="text-2xl font-bold text-gray-800">Results for</h1>
-          <p className="text-lg mt-1 font-medium text-gray-800 italic">"{query}"</p>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">Results for</h1>
+              <p className="text-lg mt-1 font-medium text-gray-800 italic">"{query}"</p>
+            </div>
+            
+            <div className="flex w-full md:w-auto">
+              <div className="relative flex-grow">
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Try a new semantic search..."
+                  className="pr-10"
+                />
+                <button 
+                  onClick={handleSearch}
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-harvard-crimson"
+                >
+                  <Search size={18} />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
         
         {/* Horizontal filter bar */}
@@ -145,7 +186,9 @@ const ResultsPage: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Any Industry</SelectItem>
-                  {/* Add industry options when available in data */}
+                  {uniqueIndustries.map((industry) => (
+                    industry && <SelectItem key={industry} value={industry}>{industry}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -157,7 +200,9 @@ const ResultsPage: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Any Function</SelectItem>
-                  {/* Add function options when available in data */}
+                  {uniqueFunctions.map((functionVal) => (
+                    functionVal && <SelectItem key={functionVal} value={functionVal}>{functionVal}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
