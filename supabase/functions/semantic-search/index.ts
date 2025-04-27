@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -16,6 +15,7 @@ serve(async (req) => {
 
   try {
     const { query } = await req.json();
+    console.log("Received search query:", query);
     
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -48,38 +48,46 @@ serve(async (req) => {
       relevanceReason: ''
     }));
 
-    // Try to use OpenAI for semantic understanding if available
+    // Try to use OpenAI for semantic understanding
     let searchCriteria = {};
     try {
       if (Deno.env.get('OPENAI_API_KEY')) {
+        console.log("Preparing OpenAI request with query:", query);
+        
+        const openaiRequestBody = {
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful assistant that analyzes search queries and extracts key search criteria. Consider criteria like: industry, role/title, location, year, skills, company type, and any other relevant factors. Return ONLY a JSON object with the extracted criteria, no other text."
+            },
+            {
+              role: "user",
+              content: `Extract search criteria from this query: "${query}"`
+            }
+          ],
+          temperature: 0.3
+        };
+        
+        console.log("OpenAI request parameters:", JSON.stringify(openaiRequestBody, null, 2));
+
         const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [
-              {
-                role: "system",
-                content: "You are a helpful assistant that analyzes search queries and extracts key search criteria. Consider criteria like: industry, role/title, location, year, skills, company type, and any other relevant factors. Return ONLY a JSON object with the extracted criteria, no other text."
-              },
-              {
-                role: "user",
-                content: `Extract search criteria from this query: "${query}"`
-              }
-            ],
-            temperature: 0.3
-          }),
+          body: JSON.stringify(openaiRequestBody),
         });
 
         if (openaiResponse.ok) {
           const aiResult = await openaiResponse.json();
+          console.log("OpenAI API response:", JSON.stringify(aiResult, null, 2));
           searchCriteria = JSON.parse(aiResult.choices[0].message.content);
+          console.log("Parsed search criteria:", JSON.stringify(searchCriteria, null, 2));
         } else {
-          // If OpenAI fails, we'll use the fallback below
-          console.error(`OpenAI API error: ${await openaiResponse.text()}`);
+          const errorText = await openaiResponse.text();
+          console.error(`OpenAI API error: ${errorText}`);
           throw new Error("OpenAI API unavailable");
         }
       } else {
@@ -87,8 +95,8 @@ serve(async (req) => {
       }
     } catch (e) {
       console.warn("Using fallback search mechanism:", e.message);
-      // Simple fallback parsing logic
       searchCriteria = fallbackQueryParsing(query);
+      console.log("Fallback search criteria:", JSON.stringify(searchCriteria, null, 2));
     }
     
     // Score and rank alumni based on search criteria
@@ -164,6 +172,8 @@ serve(async (req) => {
       .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
       .slice(0, 10)
       .map(({ relevanceScore, ...alumni }) => alumni);
+
+    console.log("Final search results:", JSON.stringify(results, null, 2));
 
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
