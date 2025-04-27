@@ -14,12 +14,12 @@ const SearchExamples: React.FC<SearchExampleProps> = ({ setQuery, handleSearch }
       query: "Looking for founders in AI startups based in Boston who graduated after 2020"
     },
     {
-      title: "Seeking expertise",
-      query: "Need insights from product leaders who have experience with healthcare technology"
+      title: "Industry expertise",
+      query: "Find alumni in healthcare technology companies with product management experience"
     },
     {
-      title: "Career guidance",
-      query: "Connect me with senior executives in fintech who can advise on career transitions"
+      title: "Location-based",
+      query: "Connect me with alumni working in finance in New York City"
     }
   ];
 

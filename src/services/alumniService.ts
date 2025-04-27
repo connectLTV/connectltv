@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 export interface Alumni {
@@ -19,53 +18,23 @@ export interface Alumni {
   function?: string;
 }
 
-// Function to search alumni from Supabase database with semantic search capabilities
+// Function to search alumni using OpenAI-powered semantic search
 export const searchAlumni = async (query: string): Promise<Alumni[]> => {
   console.log("Searching alumni with query:", query);
   
   try {
-    // Fetch alumni from Supabase
-    const { data: alumniData, error } = await supabase
-      .from('LTVAlumni Database (Spring 2025)')
-      .select('*');
-      
-    if (error) {
-      console.error("Error fetching alumni:", error);
-      throw error;
+    // Call our semantic-search edge function
+    const { data: searchResponse, error: functionError } = await supabase.functions.invoke('semantic-search', {
+      body: { query }
+    });
+
+    if (functionError) {
+      console.error("Error calling semantic search function:", functionError);
+      throw functionError;
     }
 
-    if (!alumniData || alumniData.length === 0) {
-      console.log("No alumni found in database");
-      return [];
-    }
-
-    console.log(`Found ${alumniData.length} alumni records`);
-    
-    // Transform the data from Supabase format to our Alumni interface
-    const transformedData = alumniData.map(record => ({
-      id: record.User_ID?.toString() || Math.random().toString(),
-      firstName: record['First Name'] || '',
-      lastName: record['Last Name'] || '',
-      currentTitle: record['Title'] || '',
-      currentCompany: record['Company'] || '',
-      workExperience: `${record['Title'] || 'Professional'} at ${record['Company'] || 'Company'}. ${record['Class Year'] ? `HBS Class of ${record['Class Year']}.` : ''} ${record['Location'] ? `Based in ${record['Location']}.` : ''}`,
-      email: record['Email Address'] || '',
-      linkedinUrl: record['LinkedIn URL'] || '#',
-      relevanceReason: '', // We'll calculate this based on the query
-      imageUrl: undefined,
-      location: record['Location'] || undefined,
-      classYear: record['Class Year'] || undefined,
-      instructor: record['LTV Instructor(s)'] || undefined,
-      industry: extractIndustry(record['Company'] || '', record['Title'] || ''),
-      function: extractFunction(record['Title'] || '')
-    }));
-    
-    // Parse the query for better semantic understanding
-    const parsedQuery = parseQuery(query);
-    console.log("Parsed query:", parsedQuery);
-    
-    // Perform semantic search using the parsed query
-    return semanticSearch(transformedData, query, parsedQuery);
+    console.log("Search results:", searchResponse.results);
+    return searchResponse.results;
   } catch (error) {
     console.error("Error in searchAlumni:", error);
     return [];
@@ -363,4 +332,3 @@ Best regards,
 [Your Name]
 Harvard Business School, Class of [Your Year]
 [Your Contact Information]`;
-};
