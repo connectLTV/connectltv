@@ -1,4 +1,5 @@
 
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -16,10 +17,39 @@ serve(async (req) => {
   try {
     const { query } = await req.json();
     
-    // Initialize Supabase client using environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://qqpduzxikexqqniqhwrb.supabase.co';
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    // Initialize OpenAI API call to understand the search criteria
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant that analyzes search queries and extracts key search criteria. Consider criteria like: industry, role/title, location, year, skills, company type, and any other relevant factors. Return ONLY a JSON object with the extracted criteria, no other text."
+          },
+          {
+            role: "user",
+            content: `Extract search criteria from this query: "${query}"`
+          }
+        ],
+        temperature: 0.3
+      }),
+    });
+
+    if (!openaiResponse.ok) {
+      throw new Error(`OpenAI API error: ${await openaiResponse.text()}`);
+    }
+
+    const aiResult = await openaiResponse.json();
+    const searchCriteria = JSON.parse(aiResult.choices[0].message.content);
     
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
     const supabase = createClient(supabaseUrl, supabaseKey);
     
     // Fetch alumni data
@@ -30,8 +60,8 @@ serve(async (req) => {
     if (error) {
       throw new Error(`Database error: ${error.message}`);
     }
-    
-    // Process alumni data similar to the frontend
+
+    // Transform alumni data
     const transformedData = alumniData.map(record => ({
       id: record.User_ID?.toString() || Math.random().toString(),
       firstName: record['First Name'] || '',
@@ -41,88 +71,80 @@ serve(async (req) => {
       workExperience: `${record['Title'] || 'Professional'} at ${record['Company'] || 'Company'}. ${record['Class Year'] ? `HBS Class of ${record['Class Year']}.` : ''} ${record['Location'] ? `Based in ${record['Location']}.` : ''}`,
       email: record['Email Address'] || '',
       linkedinUrl: record['LinkedIn URL'] || '#',
-      relevanceReason: '',
+      location: record['Location'] || '',
+      classYear: record['Class Year'] || '',
+      industry: record['Industry'] || '',
+      function: record['Function'] || '',
+      relevanceReason: ''
     }));
-    
-    // Perform the semantic search (simplified version)
-    const queryLower = query.toLowerCase();
-    
-    // Calculate relevance score for each alumni
-    const scoredAlumni = transformedData.map(person => {
+
+    // Score and rank alumni based on search criteria
+    const scoredAlumni = transformedData.map(alumni => {
       let score = 0;
-      let relevanceReason = "";
-      
-      // Keywords from the query
-      const queryWords = queryLower
-        .split(/\s+/)
-        .filter(word => word.length > 2)
-        .map(word => word.replace(/[.,?!;:()]/g, ''));
-        
-      // Check for career guidance queries
-      if (queryLower.includes('career') || 
-          queryLower.includes('joining') || 
-          queryLower.includes('founding') || 
-          queryLower.includes('founder') ||
-          queryLower.includes('path')) {
-        // Look for people with founder experience or senior roles
-        if ((person.currentTitle || '').toLowerCase().includes('founder') || 
-            (person.currentTitle || '').toLowerCase().includes('ceo') ||
-            (person.currentTitle || '').toLowerCase().includes('chief')) {
-          score += 50;
-          relevanceReason = "Has founder experience, can provide insights on entrepreneurial career paths.";
-        } else if ((person.currentTitle || '').toLowerCase().includes('vp') || 
-                  (person.currentTitle || '').toLowerCase().includes('head') ||
-                  (person.currentTitle || '').toLowerCase().includes('director')) {
+      let matchReasons = [];
+
+      // Location matching
+      if (searchCriteria.location && alumni.location) {
+        if (alumni.location.toLowerCase().includes(searchCriteria.location.toLowerCase())) {
           score += 30;
-          relevanceReason = "Has senior leadership experience in established companies.";
+          matchReasons.push(`Based in ${alumni.location}`);
         }
       }
-      
-      // Check for industry or domain expertise
-      for (const word of queryWords) {
-        if ((person.currentCompany || '').toLowerCase().includes(word) || 
-            (person.currentTitle || '').toLowerCase().includes(word)) {
-          score += 40;
-          relevanceReason = `Direct experience with ${word} in current role.`;
+
+      // Industry matching
+      if (searchCriteria.industry && alumni.industry) {
+        if (alumni.industry.toLowerCase().includes(searchCriteria.industry.toLowerCase())) {
+          score += 30;
+          matchReasons.push(`Works in ${alumni.industry}`);
         }
       }
-      
-      // Check for specific company mentions
-      for (const word of queryWords) {
-        if ((person.workExperience || '').toLowerCase().includes(word)) {
+
+      // Role/Title matching
+      if (searchCriteria.role && alumni.currentTitle) {
+        if (alumni.currentTitle.toLowerCase().includes(searchCriteria.role.toLowerCase())) {
+          score += 25;
+          matchReasons.push(`Current role: ${alumni.currentTitle}`);
+        }
+      }
+
+      // Year matching
+      if (searchCriteria.year && alumni.classYear) {
+        if (alumni.classYear.toString() === searchCriteria.year.toString()) {
           score += 20;
-          relevanceReason = relevanceReason || `Has experience related to ${word}.`;
+          matchReasons.push(`Class of ${alumni.classYear}`);
         }
       }
-      
-      // If no specific relevance was found, create a generic one
-      if (!relevanceReason && person.currentCompany) {
-        relevanceReason = `Experience at ${person.currentCompany} as ${person.currentTitle} might provide valuable perspective.`;
+
+      // Company type matching
+      if (searchCriteria.companyType && alumni.currentCompany) {
+        if (alumni.currentCompany.toLowerCase().includes(searchCriteria.companyType.toLowerCase())) {
+          score += 20;
+          matchReasons.push(`Works at ${alumni.currentCompany}`);
+        }
       }
-      
-      // Add some randomness to avoid same-score clustering
-      score += Math.random() * 10;
-      
+
+      // Add some randomness to prevent same-score clustering
+      score += Math.random() * 5;
+
       return {
-        ...person,
+        ...alumni,
         relevanceScore: score,
-        relevanceReason
+        relevanceReason: matchReasons.length > 0 
+          ? matchReasons.join('. ')
+          : `Profile may be relevant to your search for ${query}`
       };
     });
-    
-    // Sort by relevance score (descending)
-    const sortedAlumni = scoredAlumni
+
+    // Sort by relevance score and return top matches
+    const results = scoredAlumni
       .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-      .map(({ relevanceScore, ...alumni }) => alumni); // Remove the score from the final result
-    
-    // Return top 10 results
-    const results = sortedAlumni.slice(0, 10);
-    
+      .slice(0, 10)
+      .map(({ relevanceScore, ...alumni }) => alumni);
+
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
-  
   } catch (error) {
     console.error('Error in semantic search function:', error);
     return new Response(JSON.stringify({ error: error.message }), {
