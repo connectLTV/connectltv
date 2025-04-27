@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 export interface Alumni {
@@ -332,3 +333,4 @@ Best regards,
 [Your Name]
 Harvard Business School, Class of [Your Year]
 [Your Contact Information]`;
+};
