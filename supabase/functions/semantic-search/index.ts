@@ -17,36 +17,6 @@ serve(async (req) => {
   try {
     const { query } = await req.json();
     
-    // Initialize OpenAI API call to understand the search criteria
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful assistant that analyzes search queries and extracts key search criteria. Consider criteria like: industry, role/title, location, year, skills, company type, and any other relevant factors. Return ONLY a JSON object with the extracted criteria, no other text."
-          },
-          {
-            role: "user",
-            content: `Extract search criteria from this query: "${query}"`
-          }
-        ],
-        temperature: 0.3
-      }),
-    });
-
-    if (!openaiResponse.ok) {
-      throw new Error(`OpenAI API error: ${await openaiResponse.text()}`);
-    }
-
-    const aiResult = await openaiResponse.json();
-    const searchCriteria = JSON.parse(aiResult.choices[0].message.content);
-    
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -78,6 +48,49 @@ serve(async (req) => {
       relevanceReason: ''
     }));
 
+    // Try to use OpenAI for semantic understanding if available
+    let searchCriteria = {};
+    try {
+      if (Deno.env.get('OPENAI_API_KEY')) {
+        const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: "You are a helpful assistant that analyzes search queries and extracts key search criteria. Consider criteria like: industry, role/title, location, year, skills, company type, and any other relevant factors. Return ONLY a JSON object with the extracted criteria, no other text."
+              },
+              {
+                role: "user",
+                content: `Extract search criteria from this query: "${query}"`
+              }
+            ],
+            temperature: 0.3
+          }),
+        });
+
+        if (openaiResponse.ok) {
+          const aiResult = await openaiResponse.json();
+          searchCriteria = JSON.parse(aiResult.choices[0].message.content);
+        } else {
+          // If OpenAI fails, we'll use the fallback below
+          console.error(`OpenAI API error: ${await openaiResponse.text()}`);
+          throw new Error("OpenAI API unavailable");
+        }
+      } else {
+        throw new Error("OpenAI API key not configured");
+      }
+    } catch (e) {
+      console.warn("Using fallback search mechanism:", e.message);
+      // Simple fallback parsing logic
+      searchCriteria = fallbackQueryParsing(query);
+    }
+    
     // Score and rank alumni based on search criteria
     const scoredAlumni = transformedData.map(alumni => {
       let score = 0;
@@ -123,6 +136,17 @@ serve(async (req) => {
         }
       }
 
+      // Basic keyword matching
+      const queryLower = query.toLowerCase();
+      const fullDetails = `${alumni.firstName} ${alumni.lastName} ${alumni.currentTitle} ${alumni.currentCompany} ${alumni.location || ''} ${alumni.classYear || ''} ${alumni.industry || ''} ${alumni.function || ''}`.toLowerCase();
+      
+      if (fullDetails.includes(queryLower)) {
+        score += 15;
+        if (matchReasons.length === 0) {
+          matchReasons.push(`Profile contains relevant keywords`);
+        }
+      }
+
       // Add some randomness to prevent same-score clustering
       score += Math.random() * 5;
 
@@ -147,9 +171,82 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error('Error in semantic search function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error.message, results: [] }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
+      status: 200, // Return 200 even on error, with error info in the response
     });
   }
 });
+
+// Fallback query parsing function
+function fallbackQueryParsing(query: string): Record<string, any> {
+  const queryLower = query.toLowerCase();
+  const result: Record<string, any> = {
+    keywords: [],
+    location: null,
+    year: null,
+    industry: null,
+    role: null,
+    concepts: [],
+    companyType: null,
+    skills: []
+  };
+  
+  // Extract location info
+  const locationPatterns = [
+    /\bin\s+([a-z\s]+)/i,
+    /\bfrom\s+([a-z\s]+)/i,
+    /\bbased\s+in\s+([a-z\s]+)/i,
+    /\bliving\s+in\s+([a-z\s]+)/i
+  ];
+  
+  for (const pattern of locationPatterns) {
+    const match = queryLower.match(pattern);
+    if (match && match[1]) {
+      result.location = match[1].trim();
+      break;
+    }
+  }
+  
+  // Extract year info
+  const yearPattern = /\b(20\d{2})\b|\bclass\s+of\s+(20\d{2})\b/i;
+  const yearMatch = queryLower.match(yearPattern);
+  if (yearMatch) {
+    result.year = yearMatch[1] || yearMatch[2];
+  }
+  
+  // Extract industry keywords
+  const industries = ['tech', 'finance', 'healthcare', 'retail', 'media', 'ai', 'startup'];
+  industries.forEach(industry => {
+    if (queryLower.includes(industry)) {
+      result.industry = industry;
+    }
+  });
+  
+  // Extract role/function keywords
+  const roles = ['ceo', 'founder', 'engineer', 'product', 'marketing', 'sales', 'operations', 'finance'];
+  roles.forEach(role => {
+    if (queryLower.includes(role)) {
+      result.role = role;
+    }
+  });
+
+  // Extract company types
+  const companyTypes = ['startup', 'enterprise', 'agency', 'consultant', 'corporation'];
+  companyTypes.forEach(type => {
+    if (queryLower.includes(type)) {
+      result.companyType = type;
+    }
+  });
+  
+  // Extract remaining keywords
+  const stopWords = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'by', 'for', 'with', 'about', 'as', 'to', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'of', 'from']);
+  const words = queryLower
+    .replace(/[.,?!;:()\[\]{}]/g, '')
+    .split(/\s+/)
+    .filter(word => word.length > 3 && !stopWords.has(word));
+  
+  result.keywords = [...new Set(words)];
+  
+  return result;
+}
