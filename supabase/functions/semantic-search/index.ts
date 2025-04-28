@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -56,6 +57,7 @@ serve(async (req) => {
     console.log("Embedding generation successful");
     console.log("Embedding dimensions:", embeddingData.data[0].embedding.length);
     const embedding = embeddingData.data[0].embedding;
+    const stringifiedEmbedding = JSON.stringify(embedding);
 
     // Step 2: Query the database with embedding similarity
     console.log("==== DIRECT QUERY SEARCH ====");
@@ -65,12 +67,20 @@ serve(async (req) => {
     try {
       console.log("Querying alumni database with embedding");
       
-      // Execute SQL query with embedding similarity calculation
-      const { data: directData, error: directError } = await supabase
-        .from('LTV Alumni Database Enriched with Embeddings')
-        .select('*, 1 - (embedding_vec <=> $1) as similarity', { prepare: true })
-        .order('similarity', { ascending: false })
-        .limit(15);
+      // Execute SQL query with embedding similarity calculation using string interpolation
+      const { data: directData, error: directError } = await supabase.rpc(
+        'query_alumni_with_similarity',
+        { query_embedding: embedding }
+      ).catch(async (e) => {
+        console.log("RPC failed, using direct query instead:", e);
+        
+        // Fallback to raw SQL query with string interpolation for the embedding
+        return await supabase
+          .from('LTV Alumni Database Enriched with Embeddings')
+          .select(`*, 1 - (embedding_vec <=> ${stringifiedEmbedding}) as similarity`)
+          .order('similarity', { ascending: false })
+          .limit(15);
+      });
         
       if (directError) {
         console.error("Direct database query error:", directError);
@@ -250,7 +260,7 @@ Be concise in your summaries to keep the output small.`;
         email: alumni['Email Address'] || '',
         education_summary: "Harvard Business School" + (alumni['Class Year'] ? ` Class of ${alumni['Class Year']}` : ''),
         experience_summary: alumni['Experiences'] ? 
-          alumni['Experiences'].split('.')[0].substring(0, 50) + (alumni['Experiences'].length > 50 ? '...' : '') : 
+          alumni['Experiences'].split('.')[0].substring(0, 200) + (alumni['Experiences'].length > 200 ? '...' : '') : 
           `${alumni['Title'] || ''} ${alumni['Company'] ? 'at ' + alumni['Company'] : ''}`
       })).slice(0, 10);
       
