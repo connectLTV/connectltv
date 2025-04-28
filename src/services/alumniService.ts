@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 export interface Alumni {
@@ -17,6 +16,10 @@ export interface Alumni {
   instructor?: string;
   industry?: string;
   function?: string;
+  
+  headline?: string;
+  education_summary?: string;
+  experience_summary?: string;
 }
 
 // Function to search alumni using OpenAI-powered semantic search
@@ -35,11 +38,48 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
     }
 
     console.log("Search results:", searchResponse.results);
-    return searchResponse.results;
+    
+    // Transform the results to match our Alumni interface
+    return searchResponse.results.map((alumni: any) => ({
+      id: alumni.user_id?.toString() || Math.random().toString(),
+      firstName: alumni.first_name || '',
+      lastName: alumni.last_name || '',
+      currentTitle: alumni.headline || '',
+      currentCompany: '',  // This may be included in the headline
+      workExperience: alumni.experience_summary || '',
+      email: alumni.email || '',
+      linkedinUrl: alumni.linkedin_url || '#',
+      location: alumni.location || '',
+      classYear: alumni.class_year || '',
+      relevanceReason: alumni.experience_summary || alumni.headline || '',
+      headline: alumni.headline || '',
+      education_summary: alumni.education_summary || '',
+      experience_summary: alumni.experience_summary || ''
+    }));
   } catch (error) {
     console.error("Error in searchAlumni:", error);
     return [];
   }
+};
+
+// Function to generate an email template
+export const generateIntroEmail = (alumni: Alumni): string => {
+  return `Subject: Harvard Business School LTV Connection
+
+Dear ${alumni.firstName},
+
+I hope this email finds you well. I'm a current student in Harvard Business School's Launching Tech Ventures course, and I found your profile through our alumni network.
+
+I'm particularly interested in your experience${alumni.currentTitle ? ` as ${alumni.currentTitle}` : ''}${alumni.currentCompany ? ` with ${alumni.currentCompany}` : ''}. I'm working on a project related to your field and would greatly appreciate the opportunity to connect for a brief conversation to gain insights from your expertise.
+
+Would you be available for a 15-minute call in the coming weeks? I'm flexible with scheduling and would be grateful for any time you could spare.
+
+Thank you for considering my request. I look forward to potentially connecting.
+
+Best regards,
+[Your Name]
+Harvard Business School, Class of [Your Year]
+[Your Contact Information]`;
 };
 
 // Parse the natural language query into searchable components
@@ -313,24 +353,4 @@ const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Re
   
   // Return top 10 results
   return sortedAlumni.slice(0, 10);
-};
-
-// Function to generate an email template
-export const generateIntroEmail = (alumni: Alumni): string => {
-  return `Subject: Harvard Business School LTV Connection
-
-Dear ${alumni.firstName},
-
-I hope this email finds you well. I'm a current student in Harvard Business School's Launching Tech Ventures course, and I found your profile through our alumni network.
-
-I'm particularly interested in your experience with ${alumni.currentCompany} as ${alumni.currentTitle}. I'm working on a project related to your field and would greatly appreciate the opportunity to connect for a brief conversation to gain insights from your expertise.
-
-Would you be available for a 15-minute call in the coming weeks? I'm flexible with scheduling and would be grateful for any time you could spare.
-
-Thank you for considering my request. I look forward to potentially connecting.
-
-Best regards,
-[Your Name]
-Harvard Business School, Class of [Your Year]
-[Your Contact Information]`;
 };

@@ -9,6 +9,108 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      "LTV Alumni Database Enriched": {
+        Row: {
+          "Class Year": string | null
+          Education: string | null
+          "Email Address": string | null
+          Experiences: string | null
+          "First Name": string | null
+          Headline: string | null
+          "Last Name": string | null
+          "LinkedIn URL": string | null
+          Location: string | null
+          "LTV Instructor(s)": string | null
+          Occupation: string | null
+          Summary: string | null
+          User_ID: number
+        }
+        Insert: {
+          "Class Year"?: string | null
+          Education?: string | null
+          "Email Address"?: string | null
+          Experiences?: string | null
+          "First Name"?: string | null
+          Headline?: string | null
+          "Last Name"?: string | null
+          "LinkedIn URL"?: string | null
+          Location?: string | null
+          "LTV Instructor(s)"?: string | null
+          Occupation?: string | null
+          Summary?: string | null
+          User_ID: number
+        }
+        Update: {
+          "Class Year"?: string | null
+          Education?: string | null
+          "Email Address"?: string | null
+          Experiences?: string | null
+          "First Name"?: string | null
+          Headline?: string | null
+          "Last Name"?: string | null
+          "LinkedIn URL"?: string | null
+          Location?: string | null
+          "LTV Instructor(s)"?: string | null
+          Occupation?: string | null
+          Summary?: string | null
+          User_ID?: number
+        }
+        Relationships: []
+      }
+      "LTV Alumni Database Enriched with Embeddings": {
+        Row: {
+          "Class Year": string | null
+          Education: string | null
+          "Email Address": string | null
+          embedding: Json | null
+          embedding_vec: string | null
+          Experiences: string | null
+          "First Name": string | null
+          Headline: string | null
+          "Last Name": string | null
+          "LinkedIn URL": string | null
+          Location: string | null
+          "LTV Instructor(s)": string | null
+          Occupation: string | null
+          Summary: string | null
+          User_ID: number
+        }
+        Insert: {
+          "Class Year"?: string | null
+          Education?: string | null
+          "Email Address"?: string | null
+          embedding?: Json | null
+          embedding_vec?: string | null
+          Experiences?: string | null
+          "First Name"?: string | null
+          Headline?: string | null
+          "Last Name"?: string | null
+          "LinkedIn URL"?: string | null
+          Location?: string | null
+          "LTV Instructor(s)"?: string | null
+          Occupation?: string | null
+          Summary?: string | null
+          User_ID: number
+        }
+        Update: {
+          "Class Year"?: string | null
+          Education?: string | null
+          "Email Address"?: string | null
+          embedding?: Json | null
+          embedding_vec?: string | null
+          Experiences?: string | null
+          "First Name"?: string | null
+          Headline?: string | null
+          "Last Name"?: string | null
+          "LinkedIn URL"?: string | null
+          Location?: string | null
+          "LTV Instructor(s)"?: string | null
+          Occupation?: string | null
+          Summary?: string | null
+          User_ID?: number
+        }
+        Relationships: []
+      }
       "LTVAlumni Database (Spring 2025)": {
         Row: {
           "Class Year": string | null
@@ -53,7 +155,98 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      binary_quantize: {
+        Args: { "": string } | { "": unknown }
+        Returns: unknown
+      }
+      halfvec_avg: {
+        Args: { "": number[] }
+        Returns: unknown
+      }
+      halfvec_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      halfvec_send: {
+        Args: { "": unknown }
+        Returns: string
+      }
+      halfvec_typmod_in: {
+        Args: { "": unknown[] }
+        Returns: number
+      }
+      hnsw_bit_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      hnsw_halfvec_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      hnsw_sparsevec_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      hnswhandler: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      ivfflat_bit_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      ivfflat_halfvec_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      ivfflathandler: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      l2_norm: {
+        Args: { "": unknown } | { "": unknown }
+        Returns: number
+      }
+      l2_normalize: {
+        Args: { "": string } | { "": unknown } | { "": unknown }
+        Returns: string
+      }
+      sparsevec_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      sparsevec_send: {
+        Args: { "": unknown }
+        Returns: string
+      }
+      sparsevec_typmod_in: {
+        Args: { "": unknown[] }
+        Returns: number
+      }
+      vector_avg: {
+        Args: { "": number[] }
+        Returns: string
+      }
+      vector_dims: {
+        Args: { "": string } | { "": unknown }
+        Returns: number
+      }
+      vector_norm: {
+        Args: { "": string }
+        Returns: number
+      }
+      vector_out: {
+        Args: { "": string }
+        Returns: unknown
+      }
+      vector_send: {
+        Args: { "": string }
+        Returns: string
+      }
+      vector_typmod_in: {
+        Args: { "": unknown[] }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never
