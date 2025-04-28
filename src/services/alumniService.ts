@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 export interface Alumni {
@@ -24,9 +25,11 @@ export interface Alumni {
 
 // Function to search alumni using OpenAI-powered semantic search
 export const searchAlumni = async (query: string): Promise<Alumni[]> => {
+  console.log("==== FRONTEND: ALUMNI SEARCH ====");
   console.log("Searching alumni with query:", query);
   
   try {
+    console.log("Calling semantic-search edge function with query:", query);
     // Call our semantic-search edge function
     const { data: searchResponse, error: functionError } = await supabase.functions.invoke('semantic-search', {
       body: { query }
@@ -37,25 +40,43 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
       throw functionError;
     }
 
-    console.log("Search results:", searchResponse.results);
+    console.log("Search response received:", searchResponse);
+    console.log("Results count:", searchResponse.results?.length || 0);
+    
+    if (searchResponse.error) {
+      console.error("Search function returned an error:", searchResponse.error);
+    }
+    
+    if (!searchResponse.results || !Array.isArray(searchResponse.results)) {
+      console.error("Invalid results format received:", searchResponse);
+      return [];
+    }
     
     // Transform the results to match our Alumni interface
-    return searchResponse.results.map((alumni: any) => ({
-      id: alumni.user_id?.toString() || Math.random().toString(),
-      firstName: alumni.first_name || '',
-      lastName: alumni.last_name || '',
-      currentTitle: alumni.headline || '',
-      currentCompany: '',  // This may be included in the headline
-      workExperience: alumni.experience_summary || '',
-      email: alumni.email || '',
-      linkedinUrl: alumni.linkedin_url || '#',
-      location: alumni.location || '',
-      classYear: alumni.class_year || '',
-      relevanceReason: alumni.experience_summary || alumni.headline || '',
-      headline: alumni.headline || '',
-      education_summary: alumni.education_summary || '',
-      experience_summary: alumni.experience_summary || ''
-    }));
+    const transformedResults = searchResponse.results.map((alumni: any, index: number) => {
+      const result = {
+        id: alumni.user_id?.toString() || `result-${index}-${Math.random().toString(36).substring(2, 9)}`,
+        firstName: alumni.first_name || '',
+        lastName: alumni.last_name || '',
+        currentTitle: alumni.headline || '',
+        currentCompany: '',  // This may be included in the headline
+        workExperience: alumni.experience_summary || '',
+        email: alumni.email || '',
+        linkedinUrl: alumni.linkedin_url || '#',
+        location: alumni.location || '',
+        classYear: alumni.class_year || '',
+        relevanceReason: alumni.experience_summary || alumni.headline || '',
+        headline: alumni.headline || '',
+        education_summary: alumni.education_summary || '',
+        experience_summary: alumni.experience_summary || ''
+      };
+      
+      console.log(`Result ${index + 1}:`, JSON.stringify(result, null, 2));
+      return result;
+    });
+    
+    console.log("==== SEARCH COMPLETE ====");
+    return transformedResults;
   } catch (error) {
     console.error("Error in searchAlumni:", error);
     return [];

@@ -16,6 +16,7 @@ serve(async (req) => {
 
   try {
     const { query } = await req.json();
+    console.log("==== SEMANTIC SEARCH REQUEST ====");
     console.log("Received search query:", query);
     
     // Initialize Supabase client
@@ -30,16 +31,20 @@ serve(async (req) => {
 
     // Step 1: Generate embedding for the query using OpenAI's embeddings API
     console.log("Generating embedding for query:", query);
+    console.log("Using OpenAI Embedding API with model: text-embedding-ada-002");
+    const embeddingPayload = {
+      model: "text-embedding-ada-002",
+      input: query
+    };
+    console.log("OpenAI embedding request payload:", JSON.stringify(embeddingPayload));
+    
     const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${openAiApiKey}`
       },
-      body: JSON.stringify({
-        model: "text-embedding-ada-002",
-        input: query
-      })
+      body: JSON.stringify(embeddingPayload)
     });
 
     if (!embeddingResponse.ok) {
@@ -50,28 +55,41 @@ serve(async (req) => {
 
     const embeddingData = await embeddingResponse.json();
     console.log("Embedding generation successful");
+    console.log("Embedding dimensions:", embeddingData.data[0].embedding.length);
     const embedding = embeddingData.data[0].embedding;
 
     // Step 2: Perform vector search to find similar alumni
+    console.log("==== VECTOR SEARCH ====");
     console.log("Performing vector search with the generated embedding");
+    console.log("Vector search parameters: threshold=0.5, match_count=20");
     
     // Fix: Use try-catch instead of .catch() method
     let alumniData;
     try {
+      console.log("Calling match_alumni_embeddings RPC function");
+      const rpcParams = {
+        query_embedding: embedding,
+        match_threshold: 0.5,
+        match_count: 20
+      };
+      console.log("RPC parameters:", JSON.stringify(rpcParams, null, 2));
+      
       const { data, error } = await supabase.rpc(
         'match_alumni_embeddings',
-        {
-          query_embedding: embedding,
-          match_threshold: 0.5, // Adjust as needed
-          match_count: 20 // Get top 20 candidates for reranking
-        }
+        rpcParams
       );
       
       if (error) {
+        console.error("RPC error details:", JSON.stringify(error));
         throw error;
       }
       
       alumniData = data;
+      console.log(`Vector search successful, found ${data?.length || 0} records`);
+      if (data && data.length > 0) {
+        console.log("First match similarity score:", data[0].similarity);
+        console.log("Last match similarity score:", data[data.length-1].similarity);
+      }
     } catch (error) {
       console.error("Vector search error:", error);
       // Fallback to direct database query if vector search fails
@@ -82,10 +100,12 @@ serve(async (req) => {
         .limit(20);
         
       if (fallbackError) {
+        console.error("Fallback database query error:", fallbackError);
         throw new Error(`Database query error: ${fallbackError.message}`);
       }
       
       alumniData = fallbackData || [];
+      console.log(`Fallback query returned ${alumniData.length} records`);
     }
 
     if (alumniData.length === 0) {
@@ -99,6 +119,7 @@ serve(async (req) => {
     console.log(`Found ${alumniData.length} alumni records for reranking`);
 
     // Step 3: Rerank and enrich the results using GPT
+    console.log("==== GPT RERANKING ====");
     console.log("Preparing GPT reranking request");
     
     // Prepare data for GPT reranking
@@ -114,13 +135,11 @@ serve(async (req) => {
       experiences: alumni['Experiences'] || '',
       education: alumni['Education'] || ''
     }));
+    console.log("Number of alumni prepared for reranking:", alumniForReranking.length);
+    console.log("Sample alumni data for reranking:", 
+      JSON.stringify(alumniForReranking.slice(0, 1), null, 2));
 
-    const gptRequestBody = {
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You are an assistant that filters and refines alumni search matches for a user query.
+    const systemPrompt = `You are an assistant that filters and refines alumni search matches for a user query.
 
 Task:
 - Read the user query carefully.
@@ -150,21 +169,28 @@ JSON format example:
 
 If no alumni are relevant, return an empty array [].
 
-Do not add any explanation outside the JSON. Only return the JSON array.`
-        },
-        {
-          role: "user",
-          content: `User query: "${query}"
-          
+Do not add any explanation outside the JSON. Only return the JSON array.`;
+
+    console.log("System prompt for GPT reranking:", systemPrompt);
+    
+    const userPrompt = `User query: "${query}"
+    
 Alumni candidates:
-${JSON.stringify(alumniForReranking, null, 2)}`
-        }
+${JSON.stringify(alumniForReranking, null, 2)}`;
+    
+    console.log("User prompt length for GPT:", userPrompt.length, "characters");
+
+    const gptRequestBody = {
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
       ],
       temperature: 0.1,
       response_format: { type: "json_object" }
     };
 
-    console.log("Sending reranking request to GPT");
+    console.log("Sending reranking request to GPT with model:", gptRequestBody.model);
     
     const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -183,6 +209,7 @@ ${JSON.stringify(alumniForReranking, null, 2)}`
 
     const gptResult = await gptResponse.json();
     console.log("GPT reranking completed");
+    console.log("GPT response finish_reason:", gptResult.choices[0].finish_reason);
     
     let rerankedResults;
     try {
@@ -192,19 +219,33 @@ ${JSON.stringify(alumniForReranking, null, 2)}`
       
       // Parse the JSON content - it should be a JSON array inside a JSON object
       const parsedContent = JSON.parse(gptContent);
+      console.log("Parsed GPT response type:", typeof parsedContent);
+      console.log("Parsed GPT response structure:", 
+        Array.isArray(parsedContent) ? "array" : 
+        (parsedContent === null ? "null" : "object"));
       
       // Check if the parsed content contains results property
       if (Array.isArray(parsedContent)) {
         rerankedResults = parsedContent;
+        console.log("Using direct array from parsed content");
       } else if (parsedContent.results && Array.isArray(parsedContent.results)) {
         rerankedResults = parsedContent.results;
+        console.log("Using results array from parsed content");
       } else {
         // Look for any array property
+        console.log("Looking for any array property in parsed content");
         const arrayProperty = Object.keys(parsedContent).find(key => Array.isArray(parsedContent[key]));
-        rerankedResults = arrayProperty ? parsedContent[arrayProperty] : [];
+        if (arrayProperty) {
+          console.log(`Found array property: ${arrayProperty}`);
+          rerankedResults = parsedContent[arrayProperty];
+        } else {
+          console.log("No array found in parsed content, using empty array");
+          rerankedResults = [];
+        }
       }
     } catch (error) {
       console.error("Error parsing GPT response:", error);
+      console.log("Raw GPT response:", gptResult.choices[0].message.content);
       console.log("Falling back to raw alumni data");
       
       // Simple fallback transformation of alumni data
@@ -219,10 +260,11 @@ ${JSON.stringify(alumniForReranking, null, 2)}`
         education_summary: "HBS" + (alumni['Class Year'] ? ` Class of ${alumni['Class Year']}` : ''),
         experience_summary: `${alumni['Title'] || ''} at ${alumni['Company'] || ''}`
       })).slice(0, 10);
+      console.log("Created fallback results from raw alumni data");
     }
     
     console.log(`Returning ${rerankedResults.length} alumni after reranking`);
-    console.log("Final search results:", JSON.stringify(rerankedResults, null, 2));
+    console.log("==== SEARCH COMPLETE ====");
 
     return new Response(JSON.stringify({ results: rerankedResults }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

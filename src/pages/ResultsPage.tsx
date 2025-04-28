@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ const ResultsPage: React.FC = () => {
   const [results, setResults] = useState<Alumni[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAlumni, setSelectedAlumni] = useState<Alumni | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   // Filter states
   const [filters, setFilters] = useState({
@@ -50,12 +50,24 @@ const ResultsPage: React.FC = () => {
       if (!query) return;
       
       setLoading(true);
+      setSearchError(null);
+      
       try {
+        console.log("==== STARTING SEARCH ====");
+        console.log("Search query:", query);
+        
         const data = await searchAlumni(query);
-        console.log("Search results:", data);
+        console.log("Search completed, results:", data.length);
+        
+        if (data.length === 0) {
+          console.log("No results found for query:", query);
+          setSearchError(`No results found for "${query}". Please try a different search.`);
+        }
+        
         setResults(data);
       } catch (error) {
         console.error("Error fetching results:", error);
+        setSearchError("An error occurred while searching. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -81,7 +93,6 @@ const ResultsPage: React.FC = () => {
   const handleSearch = () => {
     if (searchQuery.trim()) {
       setSearchParams({ query: searchQuery });
-      // Reset selected alumni when performing a new search
       setSelectedAlumni(null);
     }
   };
@@ -212,6 +223,12 @@ const ResultsPage: React.FC = () => {
             </Button>
           </div>
         </div>
+
+        {searchError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600">{searchError}</p>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12">
