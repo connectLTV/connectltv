@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -96,10 +95,10 @@ serve(async (req) => {
 
     console.log(`Found ${alumniData.length} alumni records for processing`);
 
-    // Step 3: Prepare data for GPT by minimizing the payload
+    // Step 3: Prepare data for GPT - no text trimming now
     console.log("==== DATA PREPARATION FOR GPT ====");
     
-    // Minimize data sent to GPT to avoid token limit issues
+    // Keep full text fields without trimming
     const alumniForGPT = alumniData.map(alumni => ({
       first_name: alumni['First Name'] || '',
       last_name: alumni['Last Name'] || '',
@@ -108,17 +107,16 @@ serve(async (req) => {
       location: alumni['Location'] || '',
       linkedin_url: alumni['LinkedIn URL'] || '',
       email: alumni['Email Address'] || '',
-      // Trim long text fields to reduce token count
-      summary: (alumni['Summary'] || '').substring(0, 200) + (alumni['Summary']?.length > 200 ? '...' : ''),
-      experiences: (alumni['Experiences'] || '').substring(0, 200) + (alumni['Experiences']?.length > 200 ? '...' : ''),
-      education: (alumni['Education'] || '').substring(0, 200) + (alumni['Education']?.length > 200 ? '...' : '')
+      summary: alumni['Summary'] || '',
+      experiences: alumni['Experiences'] || '',
+      education: alumni['Education'] || ''
     }));
     
-    console.log("Prepared minimized data for GPT processing");
+    console.log("Prepared data for GPT processing");
     console.log("Number of alumni prepared for GPT:", alumniForGPT.length);
     console.log("Sample prepared alumni data:", JSON.stringify(alumniForGPT[0], null, 2));
 
-    // Step 4: Use GPT-4-mini (smaller model) to rerank and enrich the results
+    // Step 4: Use GPT-4-mini for reranking
     console.log("==== GPT RERANKING ====");
     console.log("Preparing GPT reranking request with model: gpt-4o-mini");
     
