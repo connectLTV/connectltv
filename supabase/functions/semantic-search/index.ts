@@ -57,8 +57,7 @@ serve(async (req) => {
     console.log("Embedding dimensions:", embeddingData.data[0].embedding.length);
     const embedding = embeddingData.data[0].embedding;
 
-    // Step 2: Since the match_alumni_embeddings function doesn't exist in the schema,
-    // we'll perform a direct query to the database using the embedding
+    // Step 2: Query the database with embedding similarity
     console.log("==== DIRECT QUERY SEARCH ====");
     console.log("Performing direct query search with the generated embedding");
     
@@ -66,12 +65,12 @@ serve(async (req) => {
     try {
       console.log("Querying alumni database with embedding");
       
-      // Execute direct SQL query against the table using <=> operator for cosine distance
-      // This replaces the RPC call to match_alumni_embeddings
+      // Execute SQL query with embedding similarity calculation
       const { data: directData, error: directError } = await supabase
         .from('LTV Alumni Database Enriched with Embeddings')
-        .select('*')
-        .limit(15); // Reduced from 20 to 15 to lower GPT token usage
+        .select('*, 1 - (embedding_vec <=> $1) as similarity', { prepare: true })
+        .order('similarity', { ascending: false })
+        .limit(15);
         
       if (directError) {
         console.error("Direct database query error:", directError);
@@ -80,6 +79,7 @@ serve(async (req) => {
       
       alumniData = directData || [];
       console.log(`Direct query returned ${alumniData.length} records`);
+      console.log("Sample similarity score:", alumniData[0]?.similarity);
     } catch (error) {
       console.error("Database query error:", error);
       throw new Error(`Database query error: ${error.message}`);
