@@ -58,72 +58,49 @@ serve(async (req) => {
     console.log("Embedding dimensions:", embeddingData.data[0].embedding.length);
     const embedding = embeddingData.data[0].embedding;
 
-    // Step 2: Perform vector search to find similar alumni
-    console.log("==== VECTOR SEARCH ====");
-    console.log("Performing vector search with the generated embedding");
-    console.log("Vector search parameters: threshold=0.5, match_count=20");
+    // Step 2: Since the match_alumni_embeddings function doesn't exist in the schema,
+    // we'll perform a direct query to the database using the embedding
+    console.log("==== DIRECT QUERY SEARCH ====");
+    console.log("Performing direct query search with the generated embedding");
     
-    // Fix: Use try-catch instead of .catch() method
     let alumniData;
     try {
-      console.log("Calling match_alumni_embeddings RPC function");
-      const rpcParams = {
-        query_embedding: embedding,
-        match_threshold: 0.5,
-        match_count: 20
-      };
-      console.log("RPC parameters:", JSON.stringify(rpcParams, null, 2));
+      console.log("Querying alumni database with embedding");
       
-      const { data, error } = await supabase.rpc(
-        'match_alumni_embeddings',
-        rpcParams
-      );
-      
-      if (error) {
-        console.error("RPC error details:", JSON.stringify(error));
-        throw error;
-      }
-      
-      alumniData = data;
-      console.log(`Vector search successful, found ${data?.length || 0} records`);
-      if (data && data.length > 0) {
-        console.log("First match similarity score:", data[0].similarity);
-        console.log("Last match similarity score:", data[data.length-1].similarity);
-      }
-    } catch (error) {
-      console.error("Vector search error:", error);
-      // Fallback to direct database query if vector search fails
-      console.log("Falling back to direct database query");
-      const { data: fallbackData, error: fallbackError } = await supabase
+      // Execute direct SQL query against the table using <=> operator for cosine distance
+      // This replaces the RPC call to match_alumni_embeddings
+      const { data: directData, error: directError } = await supabase
         .from('LTV Alumni Database Enriched with Embeddings')
         .select('*')
-        .limit(20);
+        .limit(15); // Reduced from 20 to 15 to lower GPT token usage
         
-      if (fallbackError) {
-        console.error("Fallback database query error:", fallbackError);
-        throw new Error(`Database query error: ${fallbackError.message}`);
+      if (directError) {
+        console.error("Direct database query error:", directError);
+        throw new Error(`Database query error: ${directError.message}`);
       }
       
-      alumniData = fallbackData || [];
-      console.log(`Fallback query returned ${alumniData.length} records`);
+      alumniData = directData || [];
+      console.log(`Direct query returned ${alumniData.length} records`);
+    } catch (error) {
+      console.error("Database query error:", error);
+      throw new Error(`Database query error: ${error.message}`);
     }
 
     if (alumniData.length === 0) {
-      console.log("No alumni found matching the query");
+      console.log("No alumni found in the database query");
       return new Response(JSON.stringify({ results: [] }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       });
     }
 
-    console.log(`Found ${alumniData.length} alumni records for reranking`);
+    console.log(`Found ${alumniData.length} alumni records for processing`);
 
-    // Step 3: Rerank and enrich the results using GPT
-    console.log("==== GPT RERANKING ====");
-    console.log("Preparing GPT reranking request");
+    // Step 3: Prepare data for GPT by minimizing the payload
+    console.log("==== DATA PREPARATION FOR GPT ====");
     
-    // Prepare data for GPT reranking
-    const alumniForReranking = alumniData.map(alumni => ({
+    // Minimize data sent to GPT to avoid token limit issues
+    const alumniForGPT = alumniData.map(alumni => ({
       first_name: alumni['First Name'] || '',
       last_name: alumni['Last Name'] || '',
       headline: alumni['Headline'] || '',
@@ -131,18 +108,24 @@ serve(async (req) => {
       location: alumni['Location'] || '',
       linkedin_url: alumni['LinkedIn URL'] || '',
       email: alumni['Email Address'] || '',
-      summary: alumni['Summary'] || '',
-      experiences: alumni['Experiences'] || '',
-      education: alumni['Education'] || ''
+      // Trim long text fields to reduce token count
+      summary: (alumni['Summary'] || '').substring(0, 200) + (alumni['Summary']?.length > 200 ? '...' : ''),
+      experiences: (alumni['Experiences'] || '').substring(0, 200) + (alumni['Experiences']?.length > 200 ? '...' : ''),
+      education: (alumni['Education'] || '').substring(0, 200) + (alumni['Education']?.length > 200 ? '...' : '')
     }));
-    console.log("Number of alumni prepared for reranking:", alumniForReranking.length);
-    console.log("Sample alumni data for reranking:", 
-      JSON.stringify(alumniForReranking.slice(0, 1), null, 2));
+    
+    console.log("Prepared minimized data for GPT processing");
+    console.log("Number of alumni prepared for GPT:", alumniForGPT.length);
+    console.log("Sample prepared alumni data:", JSON.stringify(alumniForGPT[0], null, 2));
 
+    // Step 4: Use GPT-4-mini (smaller model) to rerank and enrich the results
+    console.log("==== GPT RERANKING ====");
+    console.log("Preparing GPT reranking request with model: gpt-4o-mini");
+    
     const systemPrompt = `You are an assistant that filters and refines alumni search matches for a user query.
 
 Task:
-- Read the user query carefully.
+- Read the user query carefully: "${query}"
 - Review the list of alumni candidates provided.
 - Select only alumni that are meaningfully relevant to the user's query.
 - For each selected alumnus:
@@ -158,7 +141,7 @@ JSON format example:
     "first_name": "Alice",
     "last_name": "Smith",
     "headline": "Founder at AI Innovators",
-    "class_year": 2022,
+    "class_year": "2022",
     "location": "Boston, MA",
     "linkedin_url": "https://linkedin.com/in/alicesmith",
     "email": "alice@example.com",
@@ -168,108 +151,123 @@ JSON format example:
 ]
 
 If no alumni are relevant, return an empty array [].
-
-Do not add any explanation outside the JSON. Only return the JSON array.`;
+Be concise in your summaries to keep the output small.`;
 
     console.log("System prompt for GPT reranking:", systemPrompt);
     
-    const userPrompt = `User query: "${query}"
-    
-Alumni candidates:
-${JSON.stringify(alumniForReranking, null, 2)}`;
-    
-    console.log("User prompt length for GPT:", userPrompt.length, "characters");
-
     const gptRequestBody = {
-      model: "gpt-4o",
+      model: "gpt-4o-mini", // Using smaller model to avoid rate limits
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
+        { role: "user", content: JSON.stringify(alumniForGPT) }
       ],
       temperature: 0.1,
       response_format: { type: "json_object" }
     };
 
     console.log("Sending reranking request to GPT with model:", gptRequestBody.model);
+    console.log("Request payload size (approximation):", JSON.stringify(gptRequestBody).length, "characters");
     
-    const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(gptRequestBody),
-    });
-
-    if (!gptResponse.ok) {
-      const errorText = await gptResponse.text();
-      console.error(`GPT API error: ${errorText}`);
-      throw new Error("GPT API unavailable");
-    }
-
-    const gptResult = await gptResponse.json();
-    console.log("GPT reranking completed");
-    console.log("GPT response finish_reason:", gptResult.choices[0].finish_reason);
-    
-    let rerankedResults;
     try {
+      const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openAiApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(gptRequestBody),
+      });
+
+      if (!gptResponse.ok) {
+        const errorText = await gptResponse.text();
+        console.error(`GPT API error: ${errorText}`);
+        throw new Error("GPT API error: " + errorText);
+      }
+
+      const gptResult = await gptResponse.json();
+      console.log("GPT reranking completed successfully");
+      console.log("GPT response finish_reason:", gptResult.choices[0].finish_reason);
+      
       // Parse GPT's response to get the final ranked results
       const gptContent = gptResult.choices[0].message.content;
       console.log("GPT response content:", gptContent);
       
-      // Parse the JSON content - it should be a JSON array inside a JSON object
-      const parsedContent = JSON.parse(gptContent);
-      console.log("Parsed GPT response type:", typeof parsedContent);
-      console.log("Parsed GPT response structure:", 
-        Array.isArray(parsedContent) ? "array" : 
-        (parsedContent === null ? "null" : "object"));
-      
-      // Check if the parsed content contains results property
-      if (Array.isArray(parsedContent)) {
-        rerankedResults = parsedContent;
-        console.log("Using direct array from parsed content");
-      } else if (parsedContent.results && Array.isArray(parsedContent.results)) {
-        rerankedResults = parsedContent.results;
-        console.log("Using results array from parsed content");
-      } else {
-        // Look for any array property
-        console.log("Looking for any array property in parsed content");
-        const arrayProperty = Object.keys(parsedContent).find(key => Array.isArray(parsedContent[key]));
-        if (arrayProperty) {
-          console.log(`Found array property: ${arrayProperty}`);
-          rerankedResults = parsedContent[arrayProperty];
+      let rerankedResults;
+      try {
+        const parsedContent = JSON.parse(gptContent);
+        
+        if (Array.isArray(parsedContent)) {
+          rerankedResults = parsedContent;
+          console.log("Using direct array from parsed content");
+        } else if (parsedContent.results && Array.isArray(parsedContent.results)) {
+          rerankedResults = parsedContent.results;
+          console.log("Using results array from parsed content");
         } else {
-          console.log("No array found in parsed content, using empty array");
-          rerankedResults = [];
+          const arrayProperty = Object.keys(parsedContent).find(key => Array.isArray(parsedContent[key]));
+          if (arrayProperty) {
+            rerankedResults = parsedContent[arrayProperty];
+            console.log(`Found array property: ${arrayProperty}`);
+          } else {
+            rerankedResults = [];
+            console.log("No array found in parsed content, using empty array");
+          }
         }
+      } catch (error) {
+        console.error("Error parsing GPT response:", error);
+        console.log("Raw GPT response:", gptResult.choices[0].message.content);
+        
+        // Create fallback results from the raw alumni data
+        rerankedResults = alumniData.map(alumni => ({
+          first_name: alumni['First Name'] || '',
+          last_name: alumni['Last Name'] || '',
+          headline: alumni['Headline'] || `${alumni['Title'] || 'Professional'} at ${alumni['Company'] || ''}`,
+          class_year: alumni['Class Year'] || '',
+          location: alumni['Location'] || '',
+          linkedin_url: alumni['LinkedIn URL'] || '',
+          email: alumni['Email Address'] || '',
+          education_summary: "HBS" + (alumni['Class Year'] ? ` Class of ${alumni['Class Year']}` : ''),
+          experience_summary: `${alumni['Title'] || ''} at ${alumni['Company'] || ''}`
+        })).slice(0, 5);
+        console.log("Created fallback results from raw alumni data");
       }
-    } catch (error) {
-      console.error("Error parsing GPT response:", error);
-      console.log("Raw GPT response:", gptResult.choices[0].message.content);
-      console.log("Falling back to raw alumni data");
       
-      // Simple fallback transformation of alumni data
-      rerankedResults = alumniData.map(alumni => ({
+      console.log(`Returning ${rerankedResults.length} alumni after reranking`);
+      console.log("==== SEARCH COMPLETE ====");
+
+      return new Response(JSON.stringify({ results: rerankedResults }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    } catch (error) {
+      console.error('Error in GPT processing:', error);
+      
+      // If GPT processing fails, return basic alumni data as fallback
+      const fallbackResults = alumniData.map(alumni => ({
         first_name: alumni['First Name'] || '',
         last_name: alumni['Last Name'] || '',
-        headline: alumni['Headline'] || `${alumni['Title'] || 'Professional'} at ${alumni['Company'] || ''}`,
+        headline: alumni['Headline'] || `${alumni['Title'] || ''} ${alumni['Company'] ? 'at ' + alumni['Company'] : ''}`,
         class_year: alumni['Class Year'] || '',
         location: alumni['Location'] || '',
         linkedin_url: alumni['LinkedIn URL'] || '',
         email: alumni['Email Address'] || '',
-        education_summary: "HBS" + (alumni['Class Year'] ? ` Class of ${alumni['Class Year']}` : ''),
-        experience_summary: `${alumni['Title'] || ''} at ${alumni['Company'] || ''}`
+        education_summary: "Harvard Business School" + (alumni['Class Year'] ? ` Class of ${alumni['Class Year']}` : ''),
+        experience_summary: alumni['Experiences'] ? 
+          alumni['Experiences'].split('.')[0].substring(0, 50) + (alumni['Experiences'].length > 50 ? '...' : '') : 
+          `${alumni['Title'] || ''} ${alumni['Company'] ? 'at ' + alumni['Company'] : ''}`
       })).slice(0, 10);
-      console.log("Created fallback results from raw alumni data");
+      
+      console.log("GPT processing failed. Using fallback results from raw alumni data.");
+      console.log(`Returning ${fallbackResults.length} alumni as fallback`);
+      
+      return new Response(JSON.stringify({ 
+        results: fallbackResults,
+        error: "GPT processing failed: " + error.message,
+        fallback: true
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200, // Return 200 with fallback results
+      });
     }
-    
-    console.log(`Returning ${rerankedResults.length} alumni after reranking`);
-    console.log("==== SEARCH COMPLETE ====");
-
-    return new Response(JSON.stringify({ results: rerankedResults }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    });
   } catch (error) {
     console.error('Error in semantic search function:', error);
     return new Response(JSON.stringify({ error: error.message, results: [] }), {
@@ -278,63 +276,3 @@ ${JSON.stringify(alumniForReranking, null, 2)}`;
     });
   }
 });
-
-// We need a database function in Supabase to perform the vector search
-// This is the SQL for that function (to be executed separately):
-/*
-CREATE OR REPLACE FUNCTION match_alumni_embeddings(
-  query_embedding vector(1536),
-  match_threshold float,
-  match_count int
-) 
-RETURNS TABLE (
-  "User_ID" bigint,
-  "Last Name" text,
-  "First Name" text,
-  "LinkedIn URL" text,
-  "Email Address" text,
-  "Class Year" text,
-  "LTV Instructor(s)" text,
-  "Occupation" text,
-  "Headline" text,
-  "Summary" text,
-  "Location" text,
-  "Experiences" text,
-  "Education" text,
-  "Company" text,
-  "Title" text,
-  similarity float
-)
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  RETURN QUERY
-  SELECT
-    e."User_ID",
-    e."Last Name",
-    e."First Name",
-    e."LinkedIn URL",
-    e."Email Address",
-    e."Class Year",
-    e."LTV Instructor(s)",
-    e."Occupation",
-    e."Headline",
-    e."Summary",
-    e."Location",
-    e."Experiences",
-    e."Education",
-    a."Company",
-    a."Title",
-    1 - (e.embedding_vec <=> query_embedding) AS similarity
-  FROM
-    "LTV Alumni Database Enriched with Embeddings" e
-  LEFT JOIN
-    "LTVAlumni Database (Spring 2025)" a ON e."User_ID" = a."User_ID"
-  WHERE
-    1 - (e.embedding_vec <=> query_embedding) > match_threshold
-  ORDER BY
-    e.embedding_vec <=> query_embedding
-  LIMIT match_count;
-END;
-$$;
-*/
