@@ -55,20 +55,25 @@ serve(async (req) => {
     // Step 2: Perform vector search to find similar alumni
     console.log("Performing vector search with the generated embedding");
     
-    const { data: alumniData, error } = await supabase.rpc(
-      'match_alumni_embeddings',
-      {
-        query_embedding: embedding,
-        match_threshold: 0.5, // Adjust as needed
-        match_count: 20 // Get top 20 candidates for reranking
+    // Fix: Use try-catch instead of .catch() method
+    let alumniData;
+    try {
+      const { data, error } = await supabase.rpc(
+        'match_alumni_embeddings',
+        {
+          query_embedding: embedding,
+          match_threshold: 0.5, // Adjust as needed
+          match_count: 20 // Get top 20 candidates for reranking
+        }
+      );
+      
+      if (error) {
+        throw error;
       }
-    ).catch(error => {
+      
+      alumniData = data;
+    } catch (error) {
       console.error("Vector search error:", error);
-      return { data: null, error };
-    });
-
-    if (error || !alumniData) {
-      console.error("Vector search failed:", error);
       // Fallback to direct database query if vector search fails
       console.log("Falling back to direct database query");
       const { data: fallbackData, error: fallbackError } = await supabase
