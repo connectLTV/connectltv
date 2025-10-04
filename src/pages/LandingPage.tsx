@@ -39,7 +39,7 @@ const LandingPage: React.FC = () => {
             Find the perfect alumni connection
           </h1>
           <p className="text-lg text-gray-600 mb-10 max-w-2xl mx-auto">
-            Use natural language to describe exactly what you're looking for - our AI will find the best matches
+            Quickly identify the most helpful HBS Launching Tech Ventures alumni for your specific needs
           </p>
 
           <div className="relative w-full max-w-3xl mx-auto">
@@ -62,7 +62,7 @@ const LandingPage: React.FC = () => {
               </Button>
             </div>
             <p className="text-sm text-gray-500 mt-2 text-center">
-              Try "Find product managers at tech startups in San Francisco" or "Alumni with healthcare experience who graduated after 2020"
+              Try asking for "Alumni in fintech based in New York" or "Product leaders at tech startups from class of 2020"
             </p>
           </div>
         </div>

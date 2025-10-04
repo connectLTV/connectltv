@@ -17,90 +17,59 @@ export interface Alumni {
   instructor?: string;
   industry?: string;
   function?: string;
-  
-  headline?: string;
-  education_summary?: string;
-  experience_summary?: string;
 }
 
-// Function to search alumni using OpenAI-powered semantic search
+// Function to search alumni from Supabase database with semantic search capabilities
 export const searchAlumni = async (query: string): Promise<Alumni[]> => {
-  console.log("==== FRONTEND: ALUMNI SEARCH ====");
   console.log("Searching alumni with query:", query);
   
   try {
-    console.log("Calling semantic-search edge function with query:", query);
-    // Call our semantic-search edge function
-    const { data: searchResponse, error: functionError } = await supabase.functions.invoke('semantic-search', {
-      body: { query }
-    });
-
-    if (functionError) {
-      console.error("Error calling semantic search function:", functionError);
-      throw functionError;
+    // Fetch alumni from Supabase
+    const { data: alumniData, error } = await supabase
+      .from('LTVAlumni Database (Spring 2025)')
+      .select('*');
+      
+    if (error) {
+      console.error("Error fetching alumni:", error);
+      throw error;
     }
 
-    console.log("Search response received:", searchResponse);
-    console.log("Results count:", searchResponse.results?.length || 0);
-    
-    if (searchResponse.error) {
-      console.error("Search function returned an error:", searchResponse.error);
-    }
-    
-    if (!searchResponse.results || !Array.isArray(searchResponse.results)) {
-      console.error("Invalid results format received:", searchResponse);
+    if (!alumniData || alumniData.length === 0) {
+      console.log("No alumni found in database");
       return [];
     }
+
+    console.log(`Found ${alumniData.length} alumni records`);
     
-    // Transform the results to match our Alumni interface
-    const transformedResults = searchResponse.results.map((alumni: any, index: number) => {
-      const result = {
-        id: alumni.user_id?.toString() || `result-${index}-${Math.random().toString(36).substring(2, 9)}`,
-        firstName: alumni.first_name || '',
-        lastName: alumni.last_name || '',
-        currentTitle: alumni.headline || '',
-        currentCompany: '',  // This may be included in the headline
-        workExperience: alumni.experience_summary || '',
-        email: alumni.email || '',
-        linkedinUrl: alumni.linkedin_url || '#',
-        location: alumni.location || '',
-        classYear: alumni.class_year || '',
-        relevanceReason: alumni.experience_summary || alumni.headline || '',
-        headline: alumni.headline || '',
-        education_summary: alumni.education_summary || '',
-        experience_summary: alumni.experience_summary || ''
-      };
-      
-      console.log(`Result ${index + 1}:`, JSON.stringify(result, null, 2));
-      return result;
-    });
+    // Transform the data from Supabase format to our Alumni interface
+    const transformedData = alumniData.map(record => ({
+      id: record.User_ID?.toString() || Math.random().toString(),
+      firstName: record['First Name'] || '',
+      lastName: record['Last Name'] || '',
+      currentTitle: record['Title'] || '',
+      currentCompany: record['Company'] || '',
+      workExperience: `${record['Title'] || 'Professional'} at ${record['Company'] || 'Company'}. ${record['Class Year'] ? `HBS Class of ${record['Class Year']}.` : ''} ${record['Location'] ? `Based in ${record['Location']}.` : ''}`,
+      email: record['Email Address'] || '',
+      linkedinUrl: record['LinkedIn URL'] || '#',
+      relevanceReason: '', // We'll calculate this based on the query
+      imageUrl: undefined,
+      location: record['Location'] || undefined,
+      classYear: record['Class Year'] || undefined,
+      instructor: record['LTV Instructor(s)'] || undefined,
+      industry: extractIndustry(record['Company'] || '', record['Title'] || ''),
+      function: extractFunction(record['Title'] || '')
+    }));
     
-    console.log("==== SEARCH COMPLETE ====");
-    return transformedResults;
+    // Parse the query for better semantic understanding
+    const parsedQuery = parseQuery(query);
+    console.log("Parsed query:", parsedQuery);
+    
+    // Perform semantic search using the parsed query
+    return semanticSearch(transformedData, query, parsedQuery);
   } catch (error) {
     console.error("Error in searchAlumni:", error);
     return [];
   }
-};
-
-// Function to generate an email template
-export const generateIntroEmail = (alumni: Alumni): string => {
-  return `Subject: Harvard Business School LTV Connection
-
-Dear ${alumni.firstName},
-
-I hope this email finds you well. I'm a current student in Harvard Business School's Launching Tech Ventures course, and I found your profile through our alumni network.
-
-I'm particularly interested in your experience${alumni.currentTitle ? ` as ${alumni.currentTitle}` : ''}${alumni.currentCompany ? ` with ${alumni.currentCompany}` : ''}. I'm working on a project related to your field and would greatly appreciate the opportunity to connect for a brief conversation to gain insights from your expertise.
-
-Would you be available for a 15-minute call in the coming weeks? I'm flexible with scheduling and would be grateful for any time you could spare.
-
-Thank you for considering my request. I look forward to potentially connecting.
-
-Best regards,
-[Your Name]
-Harvard Business School, Class of [Your Year]
-[Your Contact Information]`;
 };
 
 // Parse the natural language query into searchable components
@@ -374,4 +343,24 @@ const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Re
   
   // Return top 10 results
   return sortedAlumni.slice(0, 10);
+};
+
+// Function to generate an email template
+export const generateIntroEmail = (alumni: Alumni): string => {
+  return `Subject: Harvard Business School LTV Connection
+
+Dear ${alumni.firstName},
+
+I hope this email finds you well. I'm a current student in Harvard Business School's Launching Tech Ventures course, and I found your profile through our alumni network.
+
+I'm particularly interested in your experience with ${alumni.currentCompany} as ${alumni.currentTitle}. I'm working on a project related to your field and would greatly appreciate the opportunity to connect for a brief conversation to gain insights from your expertise.
+
+Would you be available for a 15-minute call in the coming weeks? I'm flexible with scheduling and would be grateful for any time you could spare.
+
+Thank you for considering my request. I look forward to potentially connecting.
+
+Best regards,
+[Your Name]
+Harvard Business School, Class of [Your Year]
+[Your Contact Information]`;
 };
