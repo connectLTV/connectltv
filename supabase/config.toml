@@ -1,5 +1,8 @@
 
-project_id = "qqpduzxikexqqniqhwrb"
+project_id = "bcpwjwfubnpchoscvrum"
 
 [functions.semantic-search]
+verify_jwt = false
+
+[functions.search]
 verify_jwt = false

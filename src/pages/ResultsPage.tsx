@@ -141,88 +141,90 @@ const ResultsPage: React.FC = () => {
           </div>
         </div>
         
-        {/* Horizontal filter bar */}
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex-grow-0">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Filters:</label>
+        {/* Horizontal filter bar - Hidden for now (not integrated with /search function) */}
+        {false && (
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex-grow-0">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Filters:</label>
+              </div>
+
+              <div className="w-40">
+                <Select value={filters.graduationYear} onValueChange={(value) => setFilters({...filters, graduationYear: value})}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Any Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any Year</SelectItem>
+                    {uniqueYears.map((year) => (
+                      <SelectItem key={year} value={year}>{year}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-40">
+                <Select value={filters.location} onValueChange={(value) => setFilters({...filters, location: value})}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Any Location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any Location</SelectItem>
+                    {uniqueLocations.map((location) => (
+                      <SelectItem key={location} value={location}>{location}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-40">
+                <Select value={filters.instructor} onValueChange={(value) => setFilters({...filters, instructor: value})}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Any Instructor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any Instructor</SelectItem>
+                    {uniqueInstructors.map((instructor) => (
+                      <SelectItem key={instructor} value={instructor}>{instructor}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-40">
+                <Select value={filters.industry} onValueChange={(value) => setFilters({...filters, industry: value})}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Any Industry" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any Industry</SelectItem>
+                    {uniqueIndustries.map((industry) => (
+                      industry && <SelectItem key={industry} value={industry}>{industry}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-40">
+                <Select value={filters.function} onValueChange={(value) => setFilters({...filters, function: value})}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Any Function" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any Function</SelectItem>
+                    {uniqueFunctions.map((functionVal) => (
+                      functionVal && <SelectItem key={functionVal} value={functionVal}>{functionVal}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button variant="outline" size="sm" onClick={resetFilters} className="ml-auto">
+                Reset Filters
+              </Button>
             </div>
-            
-            <div className="w-40">
-              <Select value={filters.graduationYear} onValueChange={(value) => setFilters({...filters, graduationYear: value})}>
-                <SelectTrigger className="w-full h-9">
-                  <SelectValue placeholder="Any Year" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any Year</SelectItem>
-                  {uniqueYears.map((year) => (
-                    <SelectItem key={year} value={year}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="w-40">
-              <Select value={filters.location} onValueChange={(value) => setFilters({...filters, location: value})}>
-                <SelectTrigger className="w-full h-9">
-                  <SelectValue placeholder="Any Location" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any Location</SelectItem>
-                  {uniqueLocations.map((location) => (
-                    <SelectItem key={location} value={location}>{location}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="w-40">
-              <Select value={filters.instructor} onValueChange={(value) => setFilters({...filters, instructor: value})}>
-                <SelectTrigger className="w-full h-9">
-                  <SelectValue placeholder="Any Instructor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any Instructor</SelectItem>
-                  {uniqueInstructors.map((instructor) => (
-                    <SelectItem key={instructor} value={instructor}>{instructor}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="w-40">
-              <Select value={filters.industry} onValueChange={(value) => setFilters({...filters, industry: value})}>
-                <SelectTrigger className="w-full h-9">
-                  <SelectValue placeholder="Any Industry" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any Industry</SelectItem>
-                  {uniqueIndustries.map((industry) => (
-                    industry && <SelectItem key={industry} value={industry}>{industry}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="w-40">
-              <Select value={filters.function} onValueChange={(value) => setFilters({...filters, function: value})}>
-                <SelectTrigger className="w-full h-9">
-                  <SelectValue placeholder="Any Function" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any Function</SelectItem>
-                  {uniqueFunctions.map((functionVal) => (
-                    functionVal && <SelectItem key={functionVal} value={functionVal}>{functionVal}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <Button variant="outline" size="sm" onClick={resetFilters} className="ml-auto">
-              Reset Filters
-            </Button>
           </div>
-        </div>
+        )}
 
         {searchError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">

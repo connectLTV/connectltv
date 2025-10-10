@@ -17,64 +17,67 @@ export interface Alumni {
   instructor?: string;
   industry?: string;
   function?: string;
-  
+
   headline?: string;
   education_summary?: string;
   experience_summary?: string;
+  why_relevant?: string; // New field from /search endpoint
 }
 
 // Function to search alumni using OpenAI-powered semantic search
 export const searchAlumni = async (query: string): Promise<Alumni[]> => {
   console.log("==== FRONTEND: ALUMNI SEARCH ====");
   console.log("Searching alumni with query:", query);
-  
+
   try {
-    console.log("Calling semantic-search edge function with query:", query);
-    // Call our semantic-search edge function
-    const { data: searchResponse, error: functionError } = await supabase.functions.invoke('semantic-search', {
+    console.log("Calling /search edge function with query:", query);
+    // Call our new /search edge function (normalized database version)
+    const { data: searchResponse, error: functionError } = await supabase.functions.invoke('search', {
       body: { query }
     });
 
     if (functionError) {
-      console.error("Error calling semantic search function:", functionError);
+      console.error("Error calling search function:", functionError);
       throw functionError;
     }
 
     console.log("Search response received:", searchResponse);
     console.log("Results count:", searchResponse.results?.length || 0);
-    
+
     if (searchResponse.error) {
       console.error("Search function returned an error:", searchResponse.error);
     }
-    
+
     if (!searchResponse.results || !Array.isArray(searchResponse.results)) {
       console.error("Invalid results format received:", searchResponse);
       return [];
     }
-    
+
     // Transform the results to match our Alumni interface
     const transformedResults = searchResponse.results.map((alumni: any, index: number) => {
       const result = {
-        id: alumni.user_id?.toString() || `result-${index}-${Math.random().toString(36).substring(2, 9)}`,
+        id: alumni.person_id || `result-${index}-${Math.random().toString(36).substring(2, 9)}`,
         firstName: alumni.first_name || '',
         lastName: alumni.last_name || '',
         currentTitle: alumni.headline || '',
-        currentCompany: '',  // This may be included in the headline
+        currentCompany: '',  // Extracted from experience_summary if needed
         workExperience: alumni.experience_summary || '',
         email: alumni.email || '',
         linkedinUrl: alumni.linkedin_url || '#',
-        location: alumni.location || '',
+        location: '', // Not returned by new endpoint, could add if needed
         classYear: alumni.class_year || '',
-        relevanceReason: alumni.experience_summary || alumni.headline || '',
+        instructor: alumni.section || '', // LTV Instructor mapped from section
+        relevanceReason: alumni.why_relevant || alumni.experience_summary || alumni.headline || '',
         headline: alumni.headline || '',
         education_summary: alumni.education_summary || '',
-        experience_summary: alumni.experience_summary || ''
+        experience_summary: alumni.experience_summary || '',
+        why_relevant: alumni.why_relevant || '' // New field from GPT
       };
-      
+
       console.log(`Result ${index + 1}:`, JSON.stringify(result, null, 2));
       return result;
     });
-    
+
     console.log("==== SEARCH COMPLETE ====");
     return transformedResults;
   } catch (error) {
