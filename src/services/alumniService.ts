@@ -48,7 +48,7 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
       console.log("==== DEBUG INFO ====");
       console.log("Total time:", searchResponse.debug.total_time_ms, "ms");
       console.log("Steps:");
-      searchResponse.debug.steps?.forEach((step: any) => {
+      searchResponse.debug.steps?.forEach((step: { elapsed_ms: number; step: string; data?: unknown }) => {
         console.log(`  [${step.elapsed_ms}ms] ${step.step}`, step.data || '');
       });
       console.log("====================");
@@ -65,7 +65,7 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
     }
 
     // Transform the results to match our Alumni interface
-    const transformedResults = searchResponse.results.map((alumni: any, index: number) => {
+    const transformedResults = searchResponse.results.map((alumni: Record<string, unknown>, index: number) => {
       const currentTitle = alumni.current_title || alumni.headline || '';
       const result = {
         id: alumni.person_id || `result-${index}-${Math.random().toString(36).substring(2, 9)}`,
@@ -103,7 +103,7 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
 // Parse the natural language query into searchable components
 const parseQuery = (query: string) => {
   const queryLower = query.toLowerCase();
-  const result: Record<string, any> = {
+  const result: Record<string, string | string[] | null> = {
     keywords: [],
     location: null,
     year: null,
@@ -169,7 +169,7 @@ const parseQuery = (query: string) => {
   // Extract remaining keywords (excluding common words)
   const stopWords = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'by', 'for', 'with', 'about', 'as', 'to', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'of', 'from']);
   const words = queryLower
-    .replace(/[.,?!;:()\[\]{}]/g, '')
+    .replace(/[.,?!;:()[\]{}]/g, '')
     .split(/\s+/)
     .filter(word => word.length > 2 && !stopWords.has(word));
   
@@ -258,11 +258,11 @@ const fuzzyMatch = (source: string, term: string): number => {
 };
 
 // Enhanced semantic search with relevance ranking
-const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Record<string, any>): Alumni[] => {
+const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Record<string, string | string[] | null>): Alumni[] => {
   // Calculate relevance score for each alumni
   const scoredAlumni = alumni.map(person => {
     let score = 0;
-    let reasons: string[] = [];
+    const reasons: string[] = [];
     const fullDetails = `${person.firstName} ${person.lastName} ${person.currentTitle} ${person.currentCompany} ${person.workExperience} ${person.location || ''} ${person.classYear || ''} ${person.instructor || ''} ${person.industry || ''} ${person.function || ''}`.toLowerCase();
     
     // Check explicit location matches
@@ -353,8 +353,8 @@ const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Re
     score += Math.random() * 2;
     
     // Select the most relevant reason if we have multiple
-    let relevanceReason = reasons.length > 0 
-      ? reasons[0] 
+    const relevanceReason = reasons.length > 0
+      ? reasons[0]
       : `Experience at ${person.currentCompany} as ${person.currentTitle} might relate to your search.`;
     
     return {

@@ -41,9 +41,11 @@ serve(async (req) => {
 
   try {
     const { query } = await req.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const debug: Record<string, any> = { steps: [] };
     const startTime = Date.now();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const logStep = (step: string, data?: any) => {
       const elapsed = Date.now() - startTime;
       console.log(`[${elapsed}ms] ${step}`, data || '');
@@ -394,6 +396,7 @@ Return ONLY a JSON object with a "results" array containing the top 30 matches, 
       }
 
       // Merge GPT results with full enriched data
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rerankedResults = gptResults.map((gptPerson: any) => {
         const enrichedPerson = enrichedPeopleMap.get(gptPerson.person_id);
         return {

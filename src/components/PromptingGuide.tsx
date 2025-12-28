@@ -158,7 +158,6 @@ const PromptingGuide: React.FC<PromptingGuideProps> = ({ className }) => {
   const renderMarkdown = (content: string) => {
     const lines = content.split('\n');
     const elements: React.ReactNode[] = [];
-    let inList = false;
     let inTable = false;
     let tableRows: string[][] = [];
 
