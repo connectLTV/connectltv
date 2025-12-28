@@ -27,3 +27,6 @@ dist-ssr
 supabase/.env
 supabase/.branches/
 supabase/.temp/
+
+# Claude Code
+CLAUDE.md
