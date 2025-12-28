@@ -62,11 +62,20 @@ const AlumniCard: React.FC<AlumniCardProps> = ({ alumni, index, isCompact = fals
                 </span>
               </div>
               <p className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium text-gray-700`}>
-                {alumni.currentTitle} at {alumni.currentCompany}
+                {alumni.headline}
               </p>
               {!isCompact && (
                 <>
-                  <p className="text-sm text-gray-600 mt-2">{alumni.workExperience}</p>
+                  {alumni.experience_summary && (
+                    <p className="text-sm text-gray-600 mt-2">
+                      <span className="font-medium">Experience:</span> {alumni.experience_summary}
+                    </p>
+                  )}
+                  {alumni.education_summary && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      <span className="font-medium">Education:</span> {alumni.education_summary}
+                    </p>
+                  )}
                   <div className="mt-3 p-2 rounded-lg bg-red-50 border border-red-100">
                     <p className="text-sm">
                       <span className="font-medium text-red-800">Why relevant:</span> {alumni.relevanceReason}
@@ -86,10 +95,10 @@ const AlumniCard: React.FC<AlumniCardProps> = ({ alumni, index, isCompact = fals
           </div>
         </CardContent>
         <CardFooter className={`flex justify-between bg-gray-50 ${isCompact ? 'px-2 py-2' : 'px-6 py-3'}`}>
-          <Button variant="outline" size={isCompact ? "sm" : "default"} onClick={handleEmailClick}>
+          <Button variant="outline" size={isCompact ? "sm" : "default"} onClick={handleEmailClick} className="hover:text-white hover:bg-harvard-crimson">
             <Mail className={`${isCompact ? 'h-3 w-3' : 'h-4 w-4'} mr-2`} /> Draft Email
           </Button>
-          <Button variant="outline" size={isCompact ? "sm" : "default"} asChild>
+          <Button variant="outline" size={isCompact ? "sm" : "default"} asChild className="hover:text-white hover:bg-harvard-crimson">
             <a href={alumni.linkedinUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className={`${isCompact ? 'h-3 w-3' : 'h-4 w-4'} mr-2`} /> LinkedIn
             </a>

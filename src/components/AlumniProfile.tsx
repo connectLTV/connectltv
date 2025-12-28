@@ -51,20 +51,32 @@ const AlumniProfile: React.FC<AlumniProfileProps> = ({ alumni }) => {
               {alumni.firstName} {alumni.lastName}
             </h2>
             <p className="text-lg text-gray-700">
-              {alumni.currentTitle} at {alumni.currentCompany}
+              {alumni.headline}
             </p>
           </div>
         </div>
 
         <div className="space-y-4 mb-6">
-          <div className="flex items-start gap-2">
-            <Briefcase className="h-5 w-5 text-gray-500 mt-0.5" />
-            <div>
-              <h3 className="font-medium text-gray-800">Work Experience</h3>
-              <p className="text-gray-600">{alumni.workExperience}</p>
+          {alumni.experience_summary && (
+            <div className="flex items-start gap-2">
+              <Briefcase className="h-5 w-5 text-gray-500 mt-0.5" />
+              <div>
+                <h3 className="font-medium text-gray-800">Experience</h3>
+                <p className="text-gray-600">{alumni.experience_summary}</p>
+              </div>
             </div>
-          </div>
-          
+          )}
+
+          {alumni.education_summary && (
+            <div className="flex items-start gap-2">
+              <GraduationCap className="h-5 w-5 text-gray-500 mt-0.5" />
+              <div>
+                <h3 className="font-medium text-gray-800">Education</h3>
+                <p className="text-gray-600">{alumni.education_summary}</p>
+              </div>
+            </div>
+          )}
+
           {alumni.location && (
             <div className="flex items-start gap-2">
               <MapPin className="h-5 w-5 text-gray-500 mt-0.5" />
@@ -102,10 +114,10 @@ const AlumniProfile: React.FC<AlumniProfileProps> = ({ alumni }) => {
         </div>
         
         <div className="flex flex-col sm:flex-row gap-3">
-          <Button onClick={handleEmailClick} className="flex-1">
+          <Button variant="outline" onClick={handleEmailClick} className="flex-1 hover:text-white hover:bg-harvard-crimson">
             <Mail className="mr-2 h-4 w-4" /> Draft Intro Email
           </Button>
-          <Button asChild variant="outline" className="flex-1">
+          <Button asChild variant="outline" className="flex-1 hover:text-white hover:bg-harvard-crimson">
             <a href={alumni.linkedinUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 h-4 w-4" /> View LinkedIn Profile
             </a>

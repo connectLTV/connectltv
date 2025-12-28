@@ -44,8 +44,20 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
     console.log("Search response received:", searchResponse);
     console.log("Results count:", searchResponse.results?.length || 0);
 
+    // Log debug info if present
+    if (searchResponse.debug) {
+      console.log("==== DEBUG INFO ====");
+      console.log("Total time:", searchResponse.debug.total_time_ms, "ms");
+      console.log("Steps:");
+      searchResponse.debug.steps?.forEach((step: any) => {
+        console.log(`  [${step.elapsed_ms}ms] ${step.step}`, step.data || '');
+      });
+      console.log("====================");
+    }
+
     if (searchResponse.error) {
       console.error("Search function returned an error:", searchResponse.error);
+      console.error("Debug info:", searchResponse.debug);
     }
 
     if (!searchResponse.results || !Array.isArray(searchResponse.results)) {
@@ -55,18 +67,21 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
 
     // Transform the results to match our Alumni interface
     const transformedResults = searchResponse.results.map((alumni: any, index: number) => {
+      const currentTitle = alumni.current_title || alumni.headline || '';
       const result = {
         id: alumni.person_id || `result-${index}-${Math.random().toString(36).substring(2, 9)}`,
         firstName: alumni.first_name || '',
         lastName: alumni.last_name || '',
-        currentTitle: alumni.headline || '',
-        currentCompany: '',  // Extracted from experience_summary if needed
+        currentTitle: currentTitle,
+        currentCompany: alumni.current_company || '',
         workExperience: alumni.experience_summary || '',
         email: alumni.email || '',
         linkedinUrl: alumni.linkedin_url || '#',
-        location: '', // Not returned by new endpoint, could add if needed
+        location: alumni.location || '',
         classYear: alumni.class_year || '',
         instructor: alumni.section || '', // LTV Instructor mapped from section
+        industry: alumni.current_industry || '',
+        function: extractFunction(currentTitle), // Derived from title
         relevanceReason: alumni.why_relevant || alumni.experience_summary || alumni.headline || '',
         headline: alumni.headline || '',
         education_summary: alumni.education_summary || '',

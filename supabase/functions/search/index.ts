@@ -7,6 +7,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Chunk type weights for relevance scoring
+// Skills are weighted lower (0.5) to prevent skill-heavy profiles from dominating
+const CHUNK_TYPE_WEIGHTS: Record<string, number> = {
+  about: 1.0,
+  work: 1.0,
+  edu: 1.0,
+  skills: 0.5,
+};
+
 interface ChunkResult {
   chunk_id: string;
   person_id: string;
@@ -32,8 +41,16 @@ serve(async (req) => {
 
   try {
     const { query } = await req.json();
-    console.log("==== NEW SEARCH REQUEST ====");
-    console.log("Query:", query);
+    const debug: Record<string, any> = { steps: [] };
+    const startTime = Date.now();
+
+    const logStep = (step: string, data?: any) => {
+      const elapsed = Date.now() - startTime;
+      console.log(`[${elapsed}ms] ${step}`, data || '');
+      debug.steps.push({ step, elapsed_ms: elapsed, ...(data && { data }) });
+    };
+
+    logStep("START", { query });
 
     // Initialize clients
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -45,8 +62,10 @@ serve(async (req) => {
       throw new Error("OPENAI_API_KEY is not configured");
     }
 
+    logStep("Clients initialized", { hasOpenAiKey: !!openAiApiKey, hasSupabaseUrl: !!supabaseUrl });
+
     // STEP 1: Generate embedding for the query
-    console.log("\n=== STEP 1: Generate Query Embedding ===");
+    logStep("STEP 1: Generating query embedding...");
     const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
@@ -56,38 +75,40 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "text-embedding-3-large",
         input: query,
-        dimensions: 3072
+        dimensions: 2000
       })
     });
 
     if (!embeddingResponse.ok) {
       const errorText = await embeddingResponse.text();
-      console.error("OpenAI Embedding API error:", errorText);
+      logStep("STEP 1 FAILED: OpenAI Embedding API error", { error: errorText });
       throw new Error(`Embedding API error: ${errorText}`);
     }
 
     const embeddingData = await embeddingResponse.json();
     const queryEmbedding = embeddingData.data[0].embedding;
-    console.log("✓ Query embedding generated (3072 dimensions)");
+    logStep("STEP 1 COMPLETE: Query embedding generated", { dimensions: queryEmbedding.length, expected: 2000 });
 
     // STEP 2: Vector search on chunks (top 200)
-    console.log("\n=== STEP 2: Vector Search on Chunks ===");
+    logStep("STEP 2: Starting vector search on chunks...");
     const { data: chunks, error: chunksError } = await supabase.rpc('search_chunks', {
       query_embedding: queryEmbedding,
       match_count: 200
     });
 
     if (chunksError) {
-      console.error("Error searching chunks:", chunksError);
+      logStep("STEP 2 FAILED: Chunks search error", { error: chunksError });
       throw new Error(`Chunks search error: ${chunksError.message}`);
     }
 
-    console.log(`✓ Found ${chunks.length} relevant chunks`);
-    console.log(`  Top similarity: ${chunks[0]?.similarity.toFixed(4)}`);
-    console.log(`  Lowest similarity: ${chunks[chunks.length - 1]?.similarity.toFixed(4)}`);
+    logStep("STEP 2 COMPLETE: Vector search done", {
+      chunk_count: chunks?.length || 0,
+      top_similarity: chunks?.[0]?.similarity?.toFixed(4),
+      lowest_similarity: chunks?.[chunks.length - 1]?.similarity?.toFixed(4)
+    });
 
     // STEP 3: Aggregate chunks by person
-    console.log("\n=== STEP 3: Aggregate Chunks by Person ===");
+    logStep("STEP 3: Aggregating chunks by person...");
     const peopleMap = new Map<string, PersonAggregation>();
 
     for (const chunk of chunks as ChunkResult[]) {
@@ -106,40 +127,39 @@ serve(async (req) => {
       personAgg.max_similarity = Math.max(personAgg.max_similarity, chunk.similarity);
     }
 
-    // Calculate average similarity and relevance score for each person
+    // Calculate weighted similarity and relevance score for each person
+    // Apply chunk type weights (skills = 0.5, others = 1.0)
     const peopleAggregations = Array.from(peopleMap.values()).map(person => {
-      // person.avg_similarity = person.chunks.reduce((sum, c) => sum + c.similarity, 0) / person.chunks.length;
+      // Apply chunk type weights to similarities
+      const weightedSims = person.chunks.map(c => {
+        const weight = CHUNK_TYPE_WEIGHTS[c.chunk_type] ?? 1.0;
+        return c.similarity * weight;
+      }).sort((a, b) => b - a);
 
-      // // Relevance score: weighted combination of max and average similarity
-      // // Max similarity (70%) + Avg similarity (30%)
-      // person.relevance_score = (person.max_similarity * 0.7) + (person.avg_similarity * 0.3);
+      const maxSim = weightedSims[0] ?? 0;
 
-      // chunks already have .similarity ∈ [0,1]
-      const sims = person.chunks.map(c => c.similarity).sort((a,b)=>b-a);
-      const maxSim = sims[0] ?? 0;
-
-      // trimmed mean over top 3 (or fewer)
-      const k = Math.min(3, sims.length);
-      const meanTopK = k ? (sims.slice(0, k).reduce((s,x)=>s+x,0) / k) : 0;
+      // Trimmed mean over top 3 (or fewer) weighted similarities
+      const k = Math.min(3, weightedSims.length);
+      const meanTopK = k ? (weightedSims.slice(0, k).reduce((s, x) => s + x, 0) / k) : 0;
 
       person.relevance_score = 0.80 * maxSim + 0.20 * meanTopK;
 
       return person;
     });
 
-    // Sort by relevance score and take top 50 for GPT reranking
+    // Sort by relevance score and take top 30 for GPT reranking
     const topPeople = peopleAggregations
       .sort((a, b) => b.relevance_score - a.relevance_score)
-      // .slice(0, 50); // TODO: restore
-      .slice(0, 20);
+      .slice(0, 50);
 
-    console.log(`✓ Aggregated to ${peopleMap.size} unique people`);
-    // console.log(`  Top 50 people selected for reranking`); // TODO: restore
-    console.log(`  Top 20 people selected for reranking`);
-    console.log(`  Best relevance score: ${topPeople[0]?.relevance_score.toFixed(4)}`);
+    logStep("STEP 3 COMPLETE: Aggregated chunks", {
+      unique_people: peopleMap.size,
+      top_50_selected: true,
+      best_relevance_score: topPeople[0]?.relevance_score.toFixed(4)
+    });
 
     // STEP 4: Fetch full person data
-    console.log("\n=== STEP 4: Fetch Full Person Data ===");
+    logStep("STEP 4: Fetching full person data...");
     const personIds = topPeople.map(p => p.person_id);
 
     const [peopleResult, experiencesResult, educationsResult] = await Promise.all([
@@ -152,13 +172,14 @@ serve(async (req) => {
     if (experiencesResult.error) throw new Error(`Experiences fetch error: ${experiencesResult.error.message}`);
     if (educationsResult.error) throw new Error(`Educations fetch error: ${educationsResult.error.message}`);
 
-    console.log(`✓ Fetched data:`);
-    console.log(`  People: ${peopleResult.data.length}`);
-    console.log(`  Experiences: ${experiencesResult.data.length}`);
-    console.log(`  Educations: ${educationsResult.data.length}`);
+    logStep("STEP 4 COMPLETE: Fetched person data", {
+      people_count: peopleResult.data.length,
+      experiences_count: experiencesResult.data.length,
+      educations_count: educationsResult.data.length
+    });
 
     // STEP 5: Enrich people with their data
-    console.log("\n=== STEP 5: Enrich People Data ===");
+    logStep("STEP 5: Enriching people data...");
     const enrichedPeople = topPeople.map(personAgg => {
       const person = peopleResult.data.find(p => p.person_id === personAgg.person_id);
       const experiences = experiencesResult.data.filter(e => e.person_id === personAgg.person_id);
@@ -183,6 +204,10 @@ serve(async (req) => {
         summary: person?.summary,
         class_year: person?.class_year,
         section: person?.section,
+        location: person?.location,
+        current_company: person?.current_company,
+        current_title: person?.current_title,
+        current_industry: person?.current_industry,
         experiences: experiences.map(exp => ({
           company: exp.company,
           title: exp.title,
@@ -204,10 +229,10 @@ serve(async (req) => {
       };
     });
 
-    console.log(`✓ Enriched ${enrichedPeople.length} people profiles`);
+    logStep("STEP 5 COMPLETE: Enriched people", { enriched_count: enrichedPeople.length });
 
     // STEP 6: GPT Reranking
-    console.log("\n=== STEP 6: GPT Reranking ===");
+    logStep("STEP 6: Starting GPT reranking...");
 
     const systemPrompt = `You are an expert at matching people to search queries for a Harvard Business School LTV (Launching Tech Ventures) alumni network.
 
@@ -215,7 +240,7 @@ Your task:
 1. Carefully read the user's search query: "${query}"
 2. Review the candidate alumni profiles provided
 3. Intelligently rerank them based on relevance to the query
-4. Select the TOP 20 most relevant matches
+4. Select the TOP 30 most relevant matches
 5. For each selected person, create concise summaries of their education and experience
 
 Important guidelines:
@@ -224,20 +249,24 @@ Important guidelines:
 - Summaries must be SHORT (1-2 sentences max) and factual
 - Do not invent information
 - Intent understanding & matching: First interpret the query to uncover its dominant intent — what the user is really seeking (e.g., particular organizations, roles, fields, or contexts). Treat those explicit or strongly implied constraints as primary signals when ranking candidates. Only after satisfying those, use other profile evidence to refine order. Do not up-rank candidates that miss clear intent signals, even if they seem generally related.
-- If fewer than 20 people are relevant, only return those who are truly good matches.
+- If fewer than 30 people are relevant, only return those who are truly good matches.
 
 For each person, provide:
+- person_id: The exact person_id from the input (REQUIRED for matching)
 - All their basic info (first_name, last_name, email, linkedin_url, headline, class_year, section)
 - education_summary: A brief, readable summary (e.g., "Harvard Business School. Yale College.")
 - experience_summary: A brief, readable summary of key roles (e.g., "Founder at TechCo. Product Manager at Google.")
 - why_relevant: A brief explanation of why this person is relevant to the query
 
-Return ONLY a JSON object with a "results" array containing the top 20 matches, ordered by relevance (most relevant first).`;
+Return ONLY a JSON object with a "results" array containing the top 30 matches, ordered by relevance (most relevant first).`;
 
     // Filter candidates by minimum vector score threshold
     const filteredCandidates = enrichedPeople.filter(p => p.relevance_score >= 0.35);
 
-    console.log(`Filtered to ${filteredCandidates.length} candidates with score >= 0.35`);
+    logStep("STEP 6: Filtered candidates", {
+      filtered_count: filteredCandidates.length,
+      threshold: 0.35
+    });
 
     // Prepare compact candidate data for GPT
     const compactCandidates = filteredCandidates.map(p => {
@@ -281,7 +310,7 @@ Return ONLY a JSON object with a "results" array containing the top 20 matches, 
     });
 
     const gptRequestBody = {
-      model: "gpt-5",
+      model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
         {
@@ -296,7 +325,7 @@ Return ONLY a JSON object with a "results" array containing the top 20 matches, 
       response_format: { type: "json_object" }
     };
 
-    console.log(`Sending ${compactCandidates.length} candidates to GPT-4o for reranking...`);
+    logStep("STEP 6: Sending to GPT", { candidate_count: compactCandidates.length });
 
     const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -309,13 +338,14 @@ Return ONLY a JSON object with a "results" array containing the top 20 matches, 
 
     if (!gptResponse.ok) {
       const errorText = await gptResponse.text();
-      console.error(`GPT API error: ${errorText}`);
+      logStep("STEP 6 FAILED: GPT API error", { error: errorText });
 
       // Fallback: return top people without GPT reranking
-      console.log("Using fallback: returning top 20 by relevance score");
-      const fallbackResults = enrichedPeople.slice(0, 20).map(p => {
+      logStep("Using fallback: returning top 30 by relevance score");
+      const fallbackResults = enrichedPeople.slice(0, 30).map(p => {
         const [firstName, ...lastNameParts] = p.full_name.split(' ');
         return {
+          person_id: p.person_id,
           first_name: firstName,
           last_name: lastNameParts.join(' ') || '',
           email: p.email,
@@ -323,15 +353,22 @@ Return ONLY a JSON object with a "results" array containing the top 20 matches, 
           headline: p.headline || 'LTV Alumni',
           class_year: p.class_year?.toString() || '',
           section: p.section || '',
+          location: p.location || '',
+          current_company: p.current_company || '',
+          current_title: p.current_title || '',
+          current_industry: p.current_industry || '',
           education_summary: p.educations.map(e => e.school).filter(Boolean).join('. '),
-          experience_summary: p.experiences.map(e => `${e.title} at ${e.company}`).filter(e => e !== ' at ').slice(0, 3).join('. ')
+          experience_summary: p.experiences.map(e => `${e.title} at ${e.company}`).filter(e => e !== ' at ').slice(0, 3).join('. '),
+          why_relevant: ''
         };
       });
 
+      debug.total_time_ms = Date.now() - startTime;
       return new Response(JSON.stringify({
         results: fallbackResults,
         fallback: true,
-        error: "GPT reranking failed, using relevance score fallback"
+        error: "GPT reranking failed, using relevance score fallback",
+        debug
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
@@ -339,29 +376,54 @@ Return ONLY a JSON object with a "results" array containing the top 20 matches, 
     }
 
     const gptResult = await gptResponse.json();
-    console.log("✓ GPT reranking completed");
+    logStep("STEP 6 COMPLETE: GPT reranking done");
 
     // Parse GPT response
     const gptContent = gptResult.choices[0].message.content;
     let rerankedResults;
 
+    // Create a lookup map for enriched people by person_id
+    const enrichedPeopleMap = new Map(enrichedPeople.map(p => [p.person_id, p]));
+
     try {
       const parsedContent = JSON.parse(gptContent);
-      rerankedResults = parsedContent.results || parsedContent.matches || parsedContent.alumni || [];
+      const gptResults = parsedContent.results || parsedContent.matches || parsedContent.alumni || [];
 
-      if (!Array.isArray(rerankedResults)) {
+      if (!Array.isArray(gptResults)) {
         throw new Error("GPT response does not contain a valid results array");
       }
 
-      console.log(`✓ Returning ${rerankedResults.length} reranked results`);
+      // Merge GPT results with full enriched data
+      rerankedResults = gptResults.map((gptPerson: any) => {
+        const enrichedPerson = enrichedPeopleMap.get(gptPerson.person_id);
+        return {
+          person_id: gptPerson.person_id,
+          first_name: gptPerson.first_name,
+          last_name: gptPerson.last_name,
+          email: gptPerson.email || enrichedPerson?.email,
+          linkedin_url: gptPerson.linkedin_url || enrichedPerson?.linkedin_url,
+          headline: gptPerson.headline || enrichedPerson?.headline,
+          class_year: gptPerson.class_year || enrichedPerson?.class_year?.toString() || '',
+          section: gptPerson.section || enrichedPerson?.section || '',
+          location: enrichedPerson?.location || '',
+          current_company: enrichedPerson?.current_company || '',
+          current_title: enrichedPerson?.current_title || '',
+          current_industry: enrichedPerson?.current_industry || '',
+          education_summary: gptPerson.education_summary || '',
+          experience_summary: gptPerson.experience_summary || '',
+          why_relevant: gptPerson.why_relevant || ''
+        };
+      });
+
+      logStep("GPT parsing complete", { result_count: rerankedResults.length });
     } catch (error) {
-      console.error("Error parsing GPT response:", error);
-      console.log("GPT response:", gptContent);
+      logStep("GPT parsing failed", { error: String(error), gptContent: gptContent?.substring(0, 500) });
 
       // Fallback
-      const fallbackResults = enrichedPeople.slice(0, 20).map(p => {
+      rerankedResults = enrichedPeople.slice(0, 30).map(p => {
         const [firstName, ...lastNameParts] = p.full_name.split(' ');
         return {
+          person_id: p.person_id,
           first_name: firstName,
           last_name: lastNameParts.join(' ') || '',
           email: p.email,
@@ -369,18 +431,21 @@ Return ONLY a JSON object with a "results" array containing the top 20 matches, 
           headline: p.headline || 'LTV Alumni',
           class_year: p.class_year?.toString() || '',
           section: p.section || '',
+          location: p.location || '',
+          current_company: p.current_company || '',
+          current_title: p.current_title || '',
+          current_industry: p.current_industry || '',
           education_summary: p.educations.map(e => e.school).filter(Boolean).join('. '),
-          experience_summary: p.experiences.map(e => `${e.title} at ${e.company}`).filter(e => e !== ' at ').slice(0, 3).join('. ')
+          experience_summary: p.experiences.map(e => `${e.title} at ${e.company}`).filter(e => e !== ' at ').slice(0, 3).join('. '),
+          why_relevant: ''
         };
       });
-
-      rerankedResults = fallbackResults;
     }
 
-    console.log("\n==== SEARCH COMPLETE ====");
-    console.log(`Final result count: ${rerankedResults.length}`);
+    logStep("SEARCH COMPLETE", { final_result_count: rerankedResults.length });
+    debug.total_time_ms = Date.now() - startTime;
 
-    return new Response(JSON.stringify({ results: rerankedResults }), {
+    return new Response(JSON.stringify({ results: rerankedResults, debug }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
@@ -389,7 +454,8 @@ Return ONLY a JSON object with a "results" array containing the top 20 matches, 
     console.error('Error in search function:', error);
     return new Response(JSON.stringify({
       error: error.message,
-      results: []
+      results: [],
+      debug: { error: String(error), message: error.message }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
