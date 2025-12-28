@@ -43,7 +43,7 @@ const LandingPage: React.FC = () => {
             Find the perfect alumni connection
           </h1>
           <p className="text-lg text-gray-600 mb-10 max-w-2xl mx-auto">
-            Use natural language to describe exactly what you're looking for - our AI will find the best matches
+            Quickly identify the most helpful HBS Launching Tech Ventures alumni for your specific needs
           </p>
 
           <div className="relative w-full max-w-3xl mx-auto">
