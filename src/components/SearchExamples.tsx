@@ -10,16 +10,28 @@ interface SearchExampleProps {
 const SearchExamples: React.FC<SearchExampleProps> = ({ setQuery, handleSearch }) => {
   const examples = [
     {
-      title: "Natural language search",
-      query: "Looking for founders in AI startups based in Boston who graduated after 2020"
+      title: "Role + Industry",
+      query: "I'm looking for founders in healthcare or biotech startups"
     },
     {
-      title: "Seeking expertise",
-      query: "Need insights from product leaders who have experience with healthcare technology"
+      title: "Role + Company",
+      query: "Find alumni with product management experience at Google or Meta"
     },
     {
-      title: "Career guidance",
-      query: "Connect me with senior executives in fintech who can advise on career transitions"
+      title: "Role + Location",
+      query: "Show me VCs and investors based in the Bay Area"
+    },
+    {
+      title: "Skills",
+      query: "Looking for alumni with machine learning and AI expertise"
+    },
+    {
+      title: "Company",
+      query: "Find people who worked at McKinsey or Bain"
+    },
+    {
+      title: "Education + Industry",
+      query: "Show me Stanford or MIT alumni working in fintech"
     }
   ];
 
@@ -30,22 +42,20 @@ const SearchExamples: React.FC<SearchExampleProps> = ({ setQuery, handleSearch }
 
   return (
     <div className="w-full max-w-4xl mx-auto mt-8">
-      <h3 className="text-base font-medium text-gray-700 mb-3">Try these semantic searches:</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {examples.map((example, index) => (
-          <div key={index} className="rounded-lg bg-gray-50 p-4 border border-gray-200">
-            <div className="flex flex-col h-full">
-              <h4 className="font-medium text-gray-800">{example.title}</h4>
-              <p className="text-xs text-gray-600 mt-1 flex-grow">{example.query}</p>
-              <Button 
+          <div key={index} className="rounded-lg bg-gray-50 p-4 border border-gray-200 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-gray-700">{example.title}</p>
+              <Button
                 variant="outline"
-                size="sm" 
-                onClick={() => handleExampleClick(example.query)} 
-                className="mt-3 border-gray-300 text-harvard-crimson hover:text-white hover:bg-harvard-crimson self-end"
+                onClick={() => handleExampleClick(example.query)}
+                className="h-7 px-2 text-xs border-gray-300 text-harvard-crimson hover:text-white hover:bg-harvard-crimson"
               >
                 Try this
               </Button>
             </div>
+            <p className="text-sm text-gray-600 flex-grow">{example.query}</p>
           </div>
         ))}
       </div>

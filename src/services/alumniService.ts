@@ -17,55 +17,83 @@ export interface Alumni {
   instructor?: string;
   industry?: string;
   function?: string;
+
+  headline?: string;
+  education_summary?: string;
+  experience_summary?: string;
+  why_relevant?: string; // New field from /search endpoint
 }
 
 // Function to search alumni from Supabase database with semantic search capabilities
 export const searchAlumni = async (query: string): Promise<Alumni[]> => {
   console.log("Searching alumni with query:", query);
-  
+
   try {
-    // Fetch alumni from Supabase
-    const { data: alumniData, error } = await supabase
-      .from('LTVAlumni Database (Spring 2025)')
-      .select('*');
-      
-    if (error) {
-      console.error("Error fetching alumni:", error);
-      throw error;
+    console.log("Calling /search edge function with query:", query);
+    // Call our new /search edge function (normalized database version)
+    const { data: searchResponse, error: functionError } = await supabase.functions.invoke('search', {
+      body: { query }
+    });
+
+    if (functionError) {
+      console.error("Error calling search function:", functionError);
+      throw functionError;
     }
 
-    if (!alumniData || alumniData.length === 0) {
-      console.log("No alumni found in database");
+    console.log("Search response received:", searchResponse);
+    console.log("Results count:", searchResponse.results?.length || 0);
+
+    // Log debug info if present
+    if (searchResponse.debug) {
+      console.log("==== DEBUG INFO ====");
+      console.log("Total time:", searchResponse.debug.total_time_ms, "ms");
+      console.log("Steps:");
+      searchResponse.debug.steps?.forEach((step: { elapsed_ms: number; step: string; data?: unknown }) => {
+        console.log(`  [${step.elapsed_ms}ms] ${step.step}`, step.data || '');
+      });
+      console.log("====================");
+    }
+
+    if (searchResponse.error) {
+      console.error("Search function returned an error:", searchResponse.error);
+      console.error("Debug info:", searchResponse.debug);
+    }
+
+    if (!searchResponse.results || !Array.isArray(searchResponse.results)) {
+      console.error("Invalid results format received:", searchResponse);
       return [];
     }
 
-    console.log(`Found ${alumniData.length} alumni records`);
-    
-    // Transform the data from Supabase format to our Alumni interface
-    const transformedData = alumniData.map(record => ({
-      id: record.User_ID?.toString() || Math.random().toString(),
-      firstName: record['First Name'] || '',
-      lastName: record['Last Name'] || '',
-      currentTitle: record['Title'] || '',
-      currentCompany: record['Company'] || '',
-      workExperience: `${record['Title'] || 'Professional'} at ${record['Company'] || 'Company'}. ${record['Class Year'] ? `HBS Class of ${record['Class Year']}.` : ''} ${record['Location'] ? `Based in ${record['Location']}.` : ''}`,
-      email: record['Email Address'] || '',
-      linkedinUrl: record['LinkedIn URL'] || '#',
-      relevanceReason: '', // We'll calculate this based on the query
-      imageUrl: undefined,
-      location: record['Location'] || undefined,
-      classYear: record['Class Year'] || undefined,
-      instructor: record['LTV Instructor(s)'] || undefined,
-      industry: extractIndustry(record['Company'] || '', record['Title'] || ''),
-      function: extractFunction(record['Title'] || '')
-    }));
-    
-    // Parse the query for better semantic understanding
-    const parsedQuery = parseQuery(query);
-    console.log("Parsed query:", parsedQuery);
-    
-    // Perform semantic search using the parsed query
-    return semanticSearch(transformedData, query, parsedQuery);
+    // Transform the results to match our Alumni interface
+    const transformedResults = searchResponse.results.map((alumni: Record<string, unknown>, index: number) => {
+      const currentTitle = alumni.current_title || alumni.headline || '';
+      const result = {
+        id: alumni.person_id || `result-${index}-${Math.random().toString(36).substring(2, 9)}`,
+        firstName: alumni.first_name || '',
+        lastName: alumni.last_name || '',
+        currentTitle: currentTitle,
+        currentCompany: alumni.current_company || '',
+        workExperience: alumni.experience_summary || '',
+        email: alumni.email || '',
+        linkedinUrl: alumni.linkedin_url || '#',
+        location: alumni.location || '',
+        classYear: alumni.class_year || '',
+        instructor: alumni.section || '', // LTV Instructor mapped from section
+        industry: alumni.current_industry || '',
+        function: extractFunction(currentTitle), // Derived from title
+        relevanceReason: alumni.why_relevant || alumni.experience_summary || alumni.headline || '',
+        headline: alumni.headline || '',
+        education_summary: alumni.education_summary || '',
+        experience_summary: alumni.experience_summary || '',
+        why_relevant: alumni.why_relevant || '' // New field from GPT
+      };
+
+      console.log(`Result ${index + 1}:`, JSON.stringify(result, null, 2));
+      return result;
+    });
+
+    console.log("==== SEARCH COMPLETE ====");
+    return transformedResults;
   } catch (error) {
     console.error("Error in searchAlumni:", error);
     return [];
@@ -75,7 +103,7 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
 // Parse the natural language query into searchable components
 const parseQuery = (query: string) => {
   const queryLower = query.toLowerCase();
-  const result: Record<string, any> = {
+  const result: Record<string, string | string[] | null> = {
     keywords: [],
     location: null,
     year: null,
@@ -141,7 +169,7 @@ const parseQuery = (query: string) => {
   // Extract remaining keywords (excluding common words)
   const stopWords = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'by', 'for', 'with', 'about', 'as', 'to', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'of', 'from']);
   const words = queryLower
-    .replace(/[.,?!;:()\[\]{}]/g, '')
+    .replace(/[.,?!;:()[\]{}]/g, '')
     .split(/\s+/)
     .filter(word => word.length > 2 && !stopWords.has(word));
   
@@ -230,11 +258,11 @@ const fuzzyMatch = (source: string, term: string): number => {
 };
 
 // Enhanced semantic search with relevance ranking
-const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Record<string, any>): Alumni[] => {
+const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Record<string, string | string[] | null>): Alumni[] => {
   // Calculate relevance score for each alumni
   const scoredAlumni = alumni.map(person => {
     let score = 0;
-    let reasons: string[] = [];
+    const reasons: string[] = [];
     const fullDetails = `${person.firstName} ${person.lastName} ${person.currentTitle} ${person.currentCompany} ${person.workExperience} ${person.location || ''} ${person.classYear || ''} ${person.instructor || ''} ${person.industry || ''} ${person.function || ''}`.toLowerCase();
     
     // Check explicit location matches
@@ -325,8 +353,8 @@ const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Re
     score += Math.random() * 2;
     
     // Select the most relevant reason if we have multiple
-    let relevanceReason = reasons.length > 0 
-      ? reasons[0] 
+    const relevanceReason = reasons.length > 0
+      ? reasons[0]
       : `Experience at ${person.currentCompany} as ${person.currentTitle} might relate to your search.`;
     
     return {

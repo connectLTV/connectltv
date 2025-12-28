@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase local files
+supabase/.env
+supabase/.branches/
+supabase/.temp/
+
+# Claude Code
+CLAUDE.md
