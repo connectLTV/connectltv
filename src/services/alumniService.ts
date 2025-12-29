@@ -21,18 +21,153 @@ export interface Alumni {
   headline?: string;
   education_summary?: string;
   experience_summary?: string;
-  why_relevant?: string; // New field from /search endpoint
+  why_relevant?: string;
 }
 
-// Function to search alumni from Supabase database with semantic search capabilities
+export interface SearchCallbacks {
+  onStart?: (totalCandidates: number, timestampMs: number) => void;
+  onResult?: (result: Alumni, index: number, timestampMs: number) => void;
+  onComplete?: (totalResults: number, totalTimeMs: number) => void;
+  onError?: (error: string) => void;
+}
+
+export type SearchPhase = 'idle' | 'searching' | 'streaming' | 'complete' | 'error';
+
+// Helper function to extract function from title
+const extractFunction = (title: string): string | undefined => {
+  const functions: Record<string, string[]> = {
+    engineering: ['Engineer', 'Developer', 'CTO', 'Technical', 'Architecture'],
+    product: ['Product', 'PM', 'UX', 'User'],
+    marketing: ['Marketing', 'Growth', 'Brand', 'CMO'],
+    sales: ['Sales', 'Business Development', 'Account', 'Revenue'],
+    operations: ['Operations', 'COO', 'Ops', 'Supply'],
+    finance: ['Finance', 'CFO', 'Financial', 'Accounting'],
+    founder: ['Founder', 'CEO', 'Owner', 'Entrepreneur'],
+  };
+
+  const titleLower = title.toLowerCase();
+
+  for (const [func, keywords] of Object.entries(functions)) {
+    if (keywords.some(keyword => titleLower.includes(keyword.toLowerCase()))) {
+      return func.charAt(0).toUpperCase() + func.slice(1);
+    }
+  }
+
+  return undefined;
+};
+
+// Transform raw result to Alumni interface
+const transformResult = (alumni: Record<string, unknown>, index: number): Alumni => {
+  const currentTitle = (alumni.current_title || alumni.headline || '') as string;
+  return {
+    id: (alumni.person_id || `result-${index}-${Math.random().toString(36).substring(2, 9)}`) as string,
+    firstName: (alumni.first_name || '') as string,
+    lastName: (alumni.last_name || '') as string,
+    currentTitle: currentTitle,
+    currentCompany: (alumni.current_company || '') as string,
+    workExperience: (alumni.experience_summary || '') as string,
+    email: (alumni.email || '') as string,
+    linkedinUrl: (alumni.linkedin_url || '#') as string,
+    location: (alumni.location || '') as string,
+    classYear: (alumni.class_year || '') as string,
+    instructor: (alumni.section || '') as string,
+    industry: (alumni.current_industry || '') as string,
+    function: extractFunction(currentTitle),
+    relevanceReason: (alumni.why_relevant || alumni.experience_summary || alumni.headline || '') as string,
+    headline: (alumni.headline || '') as string,
+    education_summary: (alumni.education_summary || '') as string,
+    experience_summary: (alumni.experience_summary || '') as string,
+    why_relevant: (alumni.why_relevant || '') as string
+  };
+};
+
+// Streaming search function with incremental result loading
+export const searchAlumniStreaming = async (
+  query: string,
+  callbacks: SearchCallbacks
+): Promise<void> => {
+  console.log("Searching alumni with streaming, query:", query);
+
+  try {
+    // Get the Supabase URL and anon key for direct fetch
+    const supabaseUrl = "https://bcpwjwfubnpchoscvrum.supabase.co";
+    const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjcHdqd2Z1Ym5wY2hvc2N2cnVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk1ODgyMDEsImV4cCI6MjA3NTE2NDIwMX0.yTegOVlV_yy1rsVorfBLbURcxuUBApNrpFsi8-P5bJA";
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'apikey': supabaseAnonKey,
+      },
+      body: JSON.stringify({ query, stream: true })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Search request failed: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("No response body");
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || ''; // Keep incomplete event in buffer
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6);
+          try {
+            const event = JSON.parse(jsonStr);
+
+            if (event.type === 'start') {
+              console.log(`[${event.timestamp_ms}ms] GPT streaming started, ${event.total_candidates} candidates`);
+              callbacks.onStart?.(event.total_candidates, event.timestamp_ms);
+            } else if (event.type === 'result') {
+              console.log(`[${event.timestamp_ms}ms] Result ${event.index}: ${event.result.first_name} ${event.result.last_name}`);
+              const transformed = transformResult(event.result, event.index - 1);
+              callbacks.onResult?.(transformed, event.index, event.timestamp_ms);
+            } else if (event.type === 'complete') {
+              console.log(`[${event.total_time_ms}ms] Search complete, ${event.total_results} results`);
+              callbacks.onComplete?.(event.total_results, event.total_time_ms);
+            } else if (event.type === 'error') {
+              console.error("Search error:", event.message);
+              callbacks.onError?.(event.message);
+            }
+          } catch (e) {
+            console.error("Failed to parse SSE event:", e, jsonStr);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error in searchAlumniStreaming:", error);
+    callbacks.onError?.(error instanceof Error ? error.message : 'Unknown error');
+  }
+};
+
+// Non-streaming search function (fallback/legacy)
 export const searchAlumni = async (query: string): Promise<Alumni[]> => {
   console.log("Searching alumni with query:", query);
 
   try {
     console.log("Calling /search edge function with query:", query);
-    // Call our new /search edge function (normalized database version)
     const { data: searchResponse, error: functionError } = await supabase.functions.invoke('search', {
-      body: { query }
+      body: { query, stream: false }
     });
 
     if (functionError) {
@@ -64,313 +199,13 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
       return [];
     }
 
-    // Transform the results to match our Alumni interface
-    const transformedResults = searchResponse.results.map((alumni: Record<string, unknown>, index: number) => {
-      const currentTitle = alumni.current_title || alumni.headline || '';
-      const result = {
-        id: alumni.person_id || `result-${index}-${Math.random().toString(36).substring(2, 9)}`,
-        firstName: alumni.first_name || '',
-        lastName: alumni.last_name || '',
-        currentTitle: currentTitle,
-        currentCompany: alumni.current_company || '',
-        workExperience: alumni.experience_summary || '',
-        email: alumni.email || '',
-        linkedinUrl: alumni.linkedin_url || '#',
-        location: alumni.location || '',
-        classYear: alumni.class_year || '',
-        instructor: alumni.section || '', // LTV Instructor mapped from section
-        industry: alumni.current_industry || '',
-        function: extractFunction(currentTitle), // Derived from title
-        relevanceReason: alumni.why_relevant || alumni.experience_summary || alumni.headline || '',
-        headline: alumni.headline || '',
-        education_summary: alumni.education_summary || '',
-        experience_summary: alumni.experience_summary || '',
-        why_relevant: alumni.why_relevant || '' // New field from GPT
-      };
-
-      console.log(`Result ${index + 1}:`, JSON.stringify(result, null, 2));
-      return result;
-    });
-
+    const transformedResults = searchResponse.results.map(transformResult);
     console.log("==== SEARCH COMPLETE ====");
     return transformedResults;
   } catch (error) {
     console.error("Error in searchAlumni:", error);
     return [];
   }
-};
-
-// Parse the natural language query into searchable components
-const parseQuery = (query: string) => {
-  const queryLower = query.toLowerCase();
-  const result: Record<string, string | string[] | null> = {
-    keywords: [],
-    location: null,
-    year: null,
-    industry: null,
-    role: null,
-    concepts: []
-  };
-  
-  // Extract location info
-  const locationPatterns = [
-    /\bin\s+([a-z\s]+)/i,
-    /\bfrom\s+([a-z\s]+)/i,
-    /\bbased\s+in\s+([a-z\s]+)/i,
-    /\bliving\s+in\s+([a-z\s]+)/i
-  ];
-  
-  for (const pattern of locationPatterns) {
-    const match = queryLower.match(pattern);
-    if (match && match[1]) {
-      result.location = match[1].trim();
-      break;
-    }
-  }
-  
-  // Extract year info
-  const yearPattern = /\b(20\d{2})\b|\bclass\s+of\s+(20\d{2})\b/i;
-  const yearMatch = queryLower.match(yearPattern);
-  if (yearMatch) {
-    result.year = yearMatch[1] || yearMatch[2];
-  }
-  
-  // Extract industry keywords
-  const industries = ['tech', 'finance', 'healthcare', 'retail', 'media', 'ai', 'startup'];
-  industries.forEach(industry => {
-    if (queryLower.includes(industry)) {
-      result.industry = industry;
-    }
-  });
-  
-  // Extract role/function keywords
-  const roles = ['ceo', 'founder', 'engineer', 'product', 'marketing', 'sales', 'operations', 'finance'];
-  roles.forEach(role => {
-    if (queryLower.includes(role)) {
-      result.role = role;
-    }
-  });
-  
-  // Extract key concepts
-  const conceptPatterns = [
-    /\bexpert(s|ise)?\s+in\s+([a-z\s]+)/i,
-    /\bspecialist(s)?\s+in\s+([a-z\s]+)/i,
-    /\bexperience\s+with\s+([a-z\s]+)/i,
-    /\bknowledge\s+of\s+([a-z\s]+)/i
-  ];
-  
-  for (const pattern of conceptPatterns) {
-    const match = queryLower.match(pattern);
-    if (match && match[2]) {
-      result.concepts.push(match[2].trim());
-    }
-  }
-  
-  // Extract remaining keywords (excluding common words)
-  const stopWords = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'by', 'for', 'with', 'about', 'as', 'to', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'of', 'from']);
-  const words = queryLower
-    .replace(/[.,?!;:()[\]{}]/g, '')
-    .split(/\s+/)
-    .filter(word => word.length > 2 && !stopWords.has(word));
-  
-  result.keywords = [...new Set(words)];
-  
-  return result;
-};
-
-// Helper function to extract industry from company and title
-const extractIndustry = (company: string, title: string): string | undefined => {
-  const industries = {
-    tech: ['Google', 'Apple', 'Microsoft', 'Amazon', 'Facebook', 'Meta', 'Tech', 'Software', 'AI', 'Data'],
-    finance: ['Bank', 'Capital', 'Invest', 'Finance', 'Financial', 'Fund', 'Asset', 'Venture'],
-    healthcare: ['Health', 'Care', 'Medical', 'Pharma', 'Hospital', 'Bio', 'Life Sciences'],
-    retail: ['Retail', 'Consumer', 'Shop', 'Store', 'Brand', 'Fashion'],
-    media: ['Media', 'Entertainment', 'News', 'Film', 'TV', 'Television', 'Studio'],
-  };
-  
-  const companyTitle = `${company} ${title}`.toLowerCase();
-  
-  for (const [industry, keywords] of Object.entries(industries)) {
-    if (keywords.some(keyword => companyTitle.includes(keyword.toLowerCase()))) {
-      return industry.charAt(0).toUpperCase() + industry.slice(1);
-    }
-  }
-  
-  return undefined;
-};
-
-// Helper function to extract function from title
-const extractFunction = (title: string): string | undefined => {
-  const functions = {
-    engineering: ['Engineer', 'Developer', 'CTO', 'Technical', 'Architecture'],
-    product: ['Product', 'PM', 'UX', 'User'],
-    marketing: ['Marketing', 'Growth', 'Brand', 'CMO'],
-    sales: ['Sales', 'Business Development', 'Account', 'Revenue'],
-    operations: ['Operations', 'COO', 'Ops', 'Supply'],
-    finance: ['Finance', 'CFO', 'Financial', 'Accounting'],
-    founder: ['Founder', 'CEO', 'Owner', 'Entrepreneur'],
-  };
-  
-  const titleLower = title.toLowerCase();
-  
-  for (const [func, keywords] of Object.entries(functions)) {
-    if (keywords.some(keyword => titleLower.includes(keyword.toLowerCase()))) {
-      return func.charAt(0).toUpperCase() + func.slice(1);
-    }
-  }
-  
-  return undefined;
-};
-
-// Fuzzy search function to check if a string contains a search term with some tolerance
-const fuzzyMatch = (source: string, term: string): number => {
-  if (!source || !term) return 0;
-  source = source.toLowerCase();
-  term = term.toLowerCase();
-  
-  // Exact match has highest score
-  if (source.includes(term)) return 1;
-  
-  // Check for partial matches
-  const words = source.split(/\s+/);
-  for (const word of words) {
-    // If word starts with the term
-    if (word.startsWith(term)) return 0.8;
-    
-    // If word contains the term
-    if (word.includes(term)) return 0.6;
-    
-    // Levenshtein-like similarity for small edits (simple version)
-    if (term.length > 3 && word.length > 3) {
-      let matches = 0;
-      for (let i = 0; i < term.length - 1; i++) {
-        const bigram = term.substring(i, i + 2);
-        if (word.includes(bigram)) {
-          matches++;
-        }
-      }
-      const similarity = matches / (term.length - 1);
-      if (similarity > 0.5) return 0.4 * similarity;
-    }
-  }
-  
-  return 0;
-};
-
-// Enhanced semantic search with relevance ranking
-const semanticSearch = (alumni: Alumni[], originalQuery: string, parsedQuery: Record<string, string | string[] | null>): Alumni[] => {
-  // Calculate relevance score for each alumni
-  const scoredAlumni = alumni.map(person => {
-    let score = 0;
-    const reasons: string[] = [];
-    const fullDetails = `${person.firstName} ${person.lastName} ${person.currentTitle} ${person.currentCompany} ${person.workExperience} ${person.location || ''} ${person.classYear || ''} ${person.instructor || ''} ${person.industry || ''} ${person.function || ''}`.toLowerCase();
-    
-    // Check explicit location matches
-    if (parsedQuery.location && person.location) {
-      const matchScore = fuzzyMatch(person.location, parsedQuery.location);
-      if (matchScore > 0) {
-        score += 40 * matchScore;
-        reasons.push(`Based in ${person.location}, matching your location interest.`);
-      }
-    }
-    
-    // Check year matches
-    if (parsedQuery.year && person.classYear) {
-      const matchScore = fuzzyMatch(person.classYear, parsedQuery.year);
-      if (matchScore > 0) {
-        score += 30 * matchScore;
-        reasons.push(`From class of ${person.classYear}, matching your year preference.`);
-      }
-    }
-    
-    // Check industry matches
-    if (parsedQuery.industry && person.industry) {
-      const matchScore = fuzzyMatch(person.industry, parsedQuery.industry);
-      if (matchScore > 0) {
-        score += 50 * matchScore;
-        reasons.push(`Works in the ${person.industry} industry as specified.`);
-      }
-    }
-    
-    // Check role/function matches
-    if (parsedQuery.role && person.function) {
-      const matchScore = fuzzyMatch(person.function, parsedQuery.role);
-      if (matchScore > 0) {
-        score += 45 * matchScore;
-        reasons.push(`Has experience in ${person.function} role as requested.`);
-      }
-    }
-    
-    // Check for specific concept matches in work experience
-    if (parsedQuery.concepts.length > 0) {
-      for (const concept of parsedQuery.concepts) {
-        const matchScore = fuzzyMatch(person.workExperience, concept);
-        if (matchScore > 0) {
-          score += 35 * matchScore;
-          reasons.push(`Has expertise related to ${concept}.`);
-          break;
-        }
-      }
-    }
-    
-    // Check keywords throughout all fields
-    for (const keyword of parsedQuery.keywords) {
-      if (keyword.length < 3) continue; // Skip very short keywords
-      
-      const matchScore = fuzzyMatch(fullDetails, keyword);
-      if (matchScore > 0) {
-        score += 20 * matchScore;
-        // Don't add redundant keyword reasons if we already have specific reasons
-        if (reasons.length === 0) {
-          reasons.push(`Profile matches "${keyword}" from your search.`);
-        }
-      }
-    }
-    
-    // Check context-aware patterns for certain types of queries
-    const queryLower = originalQuery.toLowerCase();
-    
-    // For career guidance queries
-    if (queryLower.includes('career') || queryLower.includes('advice') || queryLower.includes('path')) {
-      if ((person.currentTitle || '').toLowerCase().includes('founder') || 
-          (person.currentTitle || '').toLowerCase().includes('ceo')) {
-        score += 25;
-        reasons.push(`As a ${person.currentTitle}, can offer valuable career guidance and entrepreneurial insights.`);
-      }
-    }
-    
-    // For industry expertise queries
-    if (queryLower.includes('expert') || queryLower.includes('specialist') || queryLower.includes('experience')) {
-      if ((person.currentTitle || '').toLowerCase().includes('head') || 
-          (person.currentTitle || '').toLowerCase().includes('director') ||
-          (person.currentTitle || '').toLowerCase().includes('vp')) {
-        score += 20;
-        reasons.push(`Senior-level expertise as ${person.currentTitle} at ${person.currentCompany}.`);
-      }
-    }
-    
-    // Add some randomness for diversity (very small factor)
-    score += Math.random() * 2;
-    
-    // Select the most relevant reason if we have multiple
-    const relevanceReason = reasons.length > 0
-      ? reasons[0]
-      : `Experience at ${person.currentCompany} as ${person.currentTitle} might relate to your search.`;
-    
-    return {
-      ...person,
-      relevanceScore: score,
-      relevanceReason
-    };
-  });
-  
-  // Sort by relevance score (descending)
-  const sortedAlumni = scoredAlumni
-    .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-    .map(({ relevanceScore, ...alumni }) => alumni); // Remove the score from the final result
-  
-  // Return top 10 results
-  return sortedAlumni.slice(0, 10);
 };
 
 // Function to generate an email template
