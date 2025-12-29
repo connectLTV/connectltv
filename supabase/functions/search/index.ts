@@ -96,7 +96,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "text-embedding-3-large",
         input: query,
-        dimensions: 2000
+        dimensions: 800
       })
     });
 
