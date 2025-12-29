@@ -288,7 +288,7 @@ const PromptingGuide: React.FC<PromptingGuideProps> = ({ className }) => {
         variant="outline"
         size="sm"
         onClick={() => setIsOpen(true)}
-        className={`border-gray-300 text-harvard-crimson hover:text-white hover:bg-harvard-crimson ${className}`}
+        className={`border-gray-300 text-harvard-crimson ${className}`}
       >
         <BookOpen className="h-4 w-4 mr-2" />
         Prompting Guide

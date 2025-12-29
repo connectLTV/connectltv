@@ -95,10 +95,10 @@ const AlumniCard: React.FC<AlumniCardProps> = ({ alumni, index, isCompact = fals
           </div>
         </CardContent>
         <CardFooter className={`flex justify-between bg-gray-50 ${isCompact ? 'px-2 py-2' : 'px-6 py-3'}`}>
-          <Button variant="outline" size={isCompact ? "sm" : "default"} onClick={handleEmailClick} className="hover:text-white hover:bg-harvard-crimson">
+          <Button variant="outline" size={isCompact ? "sm" : "default"} onClick={handleEmailClick}>
             <Mail className={`${isCompact ? 'h-3 w-3' : 'h-4 w-4'} mr-2`} /> Draft Email
           </Button>
-          <Button variant="outline" size={isCompact ? "sm" : "default"} asChild className="hover:text-white hover:bg-harvard-crimson">
+          <Button variant="outline" size={isCompact ? "sm" : "default"} asChild>
             <a href={alumni.linkedinUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className={`${isCompact ? 'h-3 w-3' : 'h-4 w-4'} mr-2`} /> LinkedIn
             </a>

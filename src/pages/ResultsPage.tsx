@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Search, ChevronLeft, ChevronRight } from "lucide-react";
-import { Alumni, searchAlumni } from "@/services/alumniService";
+import { ArrowLeft, Search, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Alumni, searchAlumniStreaming, SearchPhase } from "@/services/alumniService";
 import AlumniCard from "@/components/AlumniCard";
 import AlumniProfile from "@/components/AlumniProfile";
 import PromptingGuide from "@/components/PromptingGuide";
@@ -17,10 +17,11 @@ const ResultsPage: React.FC = () => {
   const query = searchParams.get("query") || "";
   const [searchQuery, setSearchQuery] = useState(query);
   const [results, setResults] = useState<Alumni[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [searchPhase, setSearchPhase] = useState<SearchPhase>('idle');
   const [selectedAlumni, setSelectedAlumni] = useState<Alumni | null>(null);
-  const [searchError, setSearchError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalCandidates, setTotalCandidates] = useState(0);
+  const [streamingCount, setStreamingCount] = useState(0);
 
   // Filter states
   const [filters, setFilters] = useState({
@@ -61,26 +62,41 @@ const ResultsPage: React.FC = () => {
     setCurrentPage(1);
   }, [filters]);
 
-  // Perform search when query changes
-  useEffect(() => {
-    const fetchResults = async () => {
-      if (!query) return;
-      
-      setLoading(true);
-      try {
-        const data = await searchAlumni(query);
-        console.log("Search results:", data);
-        setResults(data);
-        setCurrentPage(1); // Reset to first page on new search
-      } catch (error) {
-        console.error("Error fetching results:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Perform streaming search when query changes
+  const performSearch = useCallback(async (searchQuery: string) => {
+    if (!searchQuery) return;
 
-    fetchResults();
-  }, [query]);
+    setSearchPhase('searching');
+    setResults([]);
+    setCurrentPage(1);
+    setTotalCandidates(0);
+    setStreamingCount(0);
+
+    await searchAlumniStreaming(searchQuery, {
+      onStart: (candidates, timestampMs) => {
+        console.log(`[${timestampMs}ms] GPT phase started with ${candidates} candidates`);
+        setTotalCandidates(candidates);
+        setSearchPhase('streaming');
+      },
+      onResult: (result, index, timestampMs) => {
+        console.log(`[${timestampMs}ms] Result ${index}: ${result.firstName} ${result.lastName}`);
+        setResults(prev => [...prev, result]);
+        setStreamingCount(index);
+      },
+      onComplete: (totalResults, totalTimeMs) => {
+        console.log(`[${totalTimeMs}ms] Search complete with ${totalResults} results`);
+        setSearchPhase('complete');
+      },
+      onError: (error) => {
+        console.error("Search error:", error);
+        setSearchPhase('error');
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    performSearch(query);
+  }, [query, performSearch]);
 
   const resetFilters = () => {
     setFilters({
@@ -110,6 +126,10 @@ const ResultsPage: React.FC = () => {
     }
   };
 
+  // Determine loading states
+  const isInitialLoading = searchPhase === 'searching';
+  const isStreaming = searchPhase === 'streaming';
+
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -124,13 +144,13 @@ const ResultsPage: React.FC = () => {
             </Button>
             <PromptingGuide />
           </div>
-          
+
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-800">Results for</h1>
               <p className="text-lg mt-1 font-medium text-gray-800 italic">"{query}"</p>
             </div>
-            
+
             <div className="flex w-full md:w-auto">
               <div className="relative flex-grow">
                 <Input
@@ -140,7 +160,7 @@ const ResultsPage: React.FC = () => {
                   placeholder="Try a new semantic search..."
                   className="pr-10"
                 />
-                <button 
+                <button
                   onClick={handleSearch}
                   className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-harvard-crimson"
                 >
@@ -150,7 +170,7 @@ const ResultsPage: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         {/* Horizontal filter bar - Post-search filtering on returned results */}
         {results.length > 0 && (
           <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
@@ -229,14 +249,14 @@ const ResultsPage: React.FC = () => {
                 </Select>
               </div>
 
-              <Button variant="outline" size="sm" onClick={resetFilters} className="ml-auto hover:text-white hover:bg-harvard-crimson">
+              <Button variant="outline" size="sm" onClick={resetFilters} className="ml-auto">
                 Reset Filters
               </Button>
             </div>
           </div>
         )}
 
-        {loading ? (
+        {isInitialLoading || (isStreaming && results.length === 0) ? (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="w-16 h-16 border-4 border-t-harvard-crimson border-r-harvard-crimson border-b-transparent border-l-transparent rounded-full animate-spin"></div>
             <p className="text-lg font-medium text-gray-600 mt-4">Finding the perfect alumni matches...</p>
@@ -245,16 +265,26 @@ const ResultsPage: React.FC = () => {
           <div className="flex flex-col md:flex-row gap-6">
             {/* Results Column - Always full width when no profile is selected */}
             <div className={`space-y-4 ${selectedAlumni ? 'md:w-1/2' : 'w-full'}`}>
-              {filteredResults.length === 0 ? (
+              {filteredResults.length === 0 && !isStreaming ? (
                 <div className="text-center py-12">
                   <h3 className="text-xl font-medium text-gray-700">No alumni found</h3>
                   <p className="text-gray-500 mt-2">Try a different search query or adjust your filters</p>
                 </div>
               ) : (
                 <>
-                  {/* Results count and page info */}
-                  <div className="text-sm text-gray-500 mb-2">
-                    Showing {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, filteredResults.length)} of {filteredResults.length} results
+                  {/* Results count, page info, and streaming indicator */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm text-gray-500">
+                      Showing {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, filteredResults.length)} of {filteredResults.length} results
+                    </span>
+
+                    {/* Streaming indicator - shows results coming in */}
+                    {isStreaming && (
+                      <div className="flex items-center gap-1.5 text-xs text-harvard-crimson bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Loading results...</span>
+                      </div>
+                    )}
                   </div>
 
                   {paginatedResults.map((alumni, index) => (
@@ -307,12 +337,20 @@ const ResultsPage: React.FC = () => {
                         Next
                         <ChevronRight className="h-4 w-4" />
                       </Button>
+
+                      {/* Streaming indicator in pagination area for visibility on all pages */}
+                      {isStreaming && (
+                        <div className="ml-4 flex items-center gap-1 text-xs text-gray-500">
+                          <Loader2 className="h-3 w-3 animate-spin text-harvard-crimson" />
+                          <span>Loading...</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
               )}
             </div>
-            
+
             {/* Profile View - Only shown when an alumni is selected */}
             {selectedAlumni && (
               <div className="md:w-1/2 sticky top-4">

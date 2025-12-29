@@ -27,7 +27,7 @@ const SearchExamples: React.FC<SearchExampleProps> = ({ setQuery, handleSearch }
     },
     {
       title: "Company",
-      query: "Find people who worked at McKinsey or Bain"
+      query: "Find people who have worked at OpenAI or Anthropic"
     },
     {
       title: "Education + Industry",
@@ -50,7 +50,7 @@ const SearchExamples: React.FC<SearchExampleProps> = ({ setQuery, handleSearch }
               <Button
                 variant="outline"
                 onClick={() => handleExampleClick(example.query)}
-                className="h-7 px-2 text-xs border-gray-300 text-harvard-crimson hover:text-white hover:bg-harvard-crimson"
+                className="h-7 px-2 text-xs border-gray-300 text-harvard-crimson"
               >
                 Try this
               </Button>

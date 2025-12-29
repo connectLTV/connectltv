@@ -114,10 +114,10 @@ const AlumniProfile: React.FC<AlumniProfileProps> = ({ alumni }) => {
         </div>
         
         <div className="flex flex-col sm:flex-row gap-3">
-          <Button variant="outline" onClick={handleEmailClick} className="flex-1 hover:text-white hover:bg-harvard-crimson">
+          <Button variant="outline" onClick={handleEmailClick} className="flex-1">
             <Mail className="mr-2 h-4 w-4" /> Draft Intro Email
           </Button>
-          <Button asChild variant="outline" className="flex-1 hover:text-white hover:bg-harvard-crimson">
+          <Button asChild variant="outline" className="flex-1">
             <a href={alumni.linkedinUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 h-4 w-4" /> View LinkedIn Profile
             </a>
