@@ -233,6 +233,26 @@ serve(async (req) => {
 
     logStep("STEP 5 COMPLETE: Enriched people", { enriched_count: enrichedPeople.length });
 
+    // Helper function to generate education summary locally
+    const generateEducationSummary = (educations: Array<{school?: string; degree?: string; field?: string}>): string => {
+      const summary = educations
+        .slice(0, 3)
+        .map(e => e.school || '')
+        .filter(Boolean)
+        .join('. ');
+      return summary ? summary + '.' : '';
+    };
+
+    // Helper function to generate experience summary locally
+    const generateExperienceSummary = (experiences: Array<{title?: string; company?: string}>): string => {
+      const summary = experiences
+        .slice(0, 3)
+        .map(e => `${e.title || ''} at ${e.company || ''}`.trim())
+        .filter(e => e !== 'at')
+        .join('. ');
+      return summary ? summary + '.' : '';
+    };
+
     // STEP 6: GPT Reranking
     logStep("STEP 6: Starting GPT reranking...");
 
@@ -243,24 +263,19 @@ Your task:
 2. Review the candidate alumni profiles provided
 3. Intelligently rerank them based on relevance to the query
 4. Select the TOP 30 most relevant matches
-5. For each selected person, create concise summaries of their education and experience
 
 Important guidelines:
 - Consider semantic relevance, not just keyword matching
 - Be selective - only include truly relevant matches
-- Summaries must be SHORT (1-2 sentences max) and factual
-- Do not invent information
 - Intent understanding & matching: First interpret the query to uncover its dominant intent — what the user is really seeking (e.g., particular organizations, roles, fields, or contexts). Treat those explicit or strongly implied constraints as primary signals when ranking candidates. Only after satisfying those, use other profile evidence to refine order. Do not up-rank candidates that miss clear intent signals, even if they seem generally related.
 - If fewer than 30 people are relevant, only return those who are truly good matches.
 
-For each person, provide:
+For each person, return ONLY:
 - person_id: The exact person_id from the input (REQUIRED for matching)
-- All their basic info (first_name, last_name, email, linkedin_url, headline, class_year, section)
-- education_summary: A brief, readable summary (e.g., "Harvard Business School. Yale College.")
-- experience_summary: A brief, readable summary of key roles (e.g., "Founder at TechCo. Product Manager at Google.")
-- why_relevant: A brief explanation of why this person is relevant to the query
+- why_relevant: A brief explanation (1 sentence) of why this person is relevant to the query
 
-Return ONLY a JSON object with a "results" array containing the top 30 matches, ordered by relevance (most relevant first).`;
+Return ONLY a JSON object with a "results" array containing the top 30 matches, ordered by relevance (most relevant first). Example format:
+{"results": [{"person_id": "uuid-here", "why_relevant": "Reason here"}, ...]}`;
 
     // Filter candidates by minimum vector score threshold
     const filteredCandidates = enrichedPeople.filter(p => p.relevance_score >= 0.35);
@@ -312,7 +327,7 @@ Return ONLY a JSON object with a "results" array containing the top 30 matches, 
     });
 
     const gptRequestBody = {
-      model: "gpt-4o-mini",
+      model: "gpt-5-nano",
       messages: [
         { role: "system", content: systemPrompt },
         {
@@ -323,7 +338,6 @@ Return ONLY a JSON object with a "results" array containing the top 30 matches, 
           })
         }
       ],
-      temperature: 0.2,
       response_format: { type: "json_object" }
     };
 
@@ -359,8 +373,8 @@ Return ONLY a JSON object with a "results" array containing the top 30 matches, 
           current_company: p.current_company || '',
           current_title: p.current_title || '',
           current_industry: p.current_industry || '',
-          education_summary: p.educations.map(e => e.school).filter(Boolean).join('. '),
-          experience_summary: p.experiences.map(e => `${e.title} at ${e.company}`).filter(e => e !== ' at ').slice(0, 3).join('. '),
+          education_summary: generateEducationSummary(p.educations),
+          experience_summary: generateExperienceSummary(p.experiences),
           why_relevant: ''
         };
       });
@@ -395,34 +409,41 @@ Return ONLY a JSON object with a "results" array containing the top 30 matches, 
         throw new Error("GPT response does not contain a valid results array");
       }
 
-      // Merge GPT results with full enriched data
+      // Merge GPT results (person_id + why_relevant) with full enriched data
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rerankedResults = gptResults.map((gptPerson: any) => {
         const enrichedPerson = enrichedPeopleMap.get(gptPerson.person_id);
+        if (!enrichedPerson) {
+          logStep("WARNING: person_id not found in enriched data", { person_id: gptPerson.person_id });
+          return null;
+        }
+
+        const [firstName, ...lastNameParts] = enrichedPerson.full_name.split(' ');
+
         return {
           person_id: gptPerson.person_id,
-          first_name: gptPerson.first_name,
-          last_name: gptPerson.last_name,
-          email: gptPerson.email || enrichedPerson?.email,
-          linkedin_url: gptPerson.linkedin_url || enrichedPerson?.linkedin_url,
-          headline: gptPerson.headline || enrichedPerson?.headline,
-          class_year: gptPerson.class_year || enrichedPerson?.class_year?.toString() || '',
-          section: gptPerson.section || enrichedPerson?.section || '',
-          location: enrichedPerson?.location || '',
-          current_company: enrichedPerson?.current_company || '',
-          current_title: enrichedPerson?.current_title || '',
-          current_industry: enrichedPerson?.current_industry || '',
-          education_summary: gptPerson.education_summary || '',
-          experience_summary: gptPerson.experience_summary || '',
+          first_name: firstName,
+          last_name: lastNameParts.join(' ') || '',
+          email: enrichedPerson.email,
+          linkedin_url: enrichedPerson.linkedin_url,
+          headline: enrichedPerson.headline,
+          class_year: enrichedPerson.class_year?.toString() || '',
+          section: enrichedPerson.section || '',
+          location: enrichedPerson.location || '',
+          current_company: enrichedPerson.current_company || '',
+          current_title: enrichedPerson.current_title || '',
+          current_industry: enrichedPerson.current_industry || '',
+          education_summary: generateEducationSummary(enrichedPerson.educations),
+          experience_summary: generateExperienceSummary(enrichedPerson.experiences),
           why_relevant: gptPerson.why_relevant || ''
         };
-      });
+      }).filter(Boolean); // Remove any null entries
 
       logStep("GPT parsing complete", { result_count: rerankedResults.length });
     } catch (error) {
       logStep("GPT parsing failed", { error: String(error), gptContent: gptContent?.substring(0, 500) });
 
-      // Fallback
+      // Fallback: use vector scores without GPT reranking
       rerankedResults = enrichedPeople.slice(0, 30).map(p => {
         const [firstName, ...lastNameParts] = p.full_name.split(' ');
         return {
@@ -438,8 +459,8 @@ Return ONLY a JSON object with a "results" array containing the top 30 matches, 
           current_company: p.current_company || '',
           current_title: p.current_title || '',
           current_industry: p.current_industry || '',
-          education_summary: p.educations.map(e => e.school).filter(Boolean).join('. '),
-          experience_summary: p.experiences.map(e => `${e.title} at ${e.company}`).filter(e => e !== ' at ').slice(0, 3).join('. '),
+          education_summary: generateEducationSummary(p.educations),
+          experience_summary: generateExperienceSummary(p.experiences),
           why_relevant: ''
         };
       });
