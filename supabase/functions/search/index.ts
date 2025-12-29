@@ -264,21 +264,22 @@ Your task:
 1. Carefully read the user's search query: "${query}"
 2. Review the candidate alumni profiles provided
 3. Intelligently rerank them based on relevance to the query
-4. Return NO MORE than 30 results. Stop after 30.
+4. Return ONLY people who actually match the query. Maximum 30 results.
 
 Important guidelines:
 - Consider semantic relevance, not just keyword matching
-- Be selective - only include truly relevant matches
+- ONLY include people who genuinely match the query criteria
+- DO NOT include people who don't match - don't return them with "excluded" or "not relevant" explanations
 - Intent understanding & matching: First interpret the query to uncover its dominant intent. Treat explicit or strongly implied constraints as primary signals when ranking.
-- If fewer than 30 people are relevant, only return those who are truly good matches.
+- If fewer than 30 people are relevant, return only those who truly match. It's better to return 5 great matches than 30 poor ones.
 - STRICT LIMIT: Maximum 30 results. Do not exceed this limit under any circumstances.
 
 For each person, return ONLY:
 - person_id: The exact person_id from the input (REQUIRED)
-- why_relevant: A brief explanation (1 sentence)
+- why_relevant: A brief explanation of why they MATCH the query (1 sentence, positive reasoning only)
 
 Return ONLY a JSON object with a "results" array. Maximum 30 results, ordered by relevance.
-Example: {"results": [{"person_id": "uuid-here", "why_relevant": "Reason here"}, ...]}`;
+Example: {"results": [{"person_id": "uuid-here", "why_relevant": "Worked at OpenAI as ML engineer"}, ...]}`;
 
     const filteredCandidates = enrichedPeople.filter(p => p.relevance_score >= 0.35);
 

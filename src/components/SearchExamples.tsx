@@ -27,7 +27,7 @@ const SearchExamples: React.FC<SearchExampleProps> = ({ setQuery, handleSearch }
     },
     {
       title: "Company",
-      query: "Find people who worked at McKinsey or Bain"
+      query: "Find people who have worked at OpenAI or Anthropic"
     },
     {
       title: "Education + Industry",
