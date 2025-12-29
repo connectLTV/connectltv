@@ -249,7 +249,7 @@ const ResultsPage: React.FC = () => {
                 </Select>
               </div>
 
-              <Button variant="outline" size="sm" onClick={resetFilters} className="ml-auto hover:text-white hover:bg-harvard-crimson">
+              <Button variant="outline" size="sm" onClick={resetFilters} className="ml-auto">
                 Reset Filters
               </Button>
             </div>

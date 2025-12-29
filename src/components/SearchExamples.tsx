@@ -50,7 +50,7 @@ const SearchExamples: React.FC<SearchExampleProps> = ({ setQuery, handleSearch }
               <Button
                 variant="outline"
                 onClick={() => handleExampleClick(example.query)}
-                className="h-7 px-2 text-xs border-gray-300 text-harvard-crimson hover:text-white hover:bg-harvard-crimson"
+                className="h-7 px-2 text-xs border-gray-300 text-harvard-crimson"
               >
                 Try this
               </Button>
