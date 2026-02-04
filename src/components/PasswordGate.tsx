@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Lock } from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const STORAGE_KEY = "connectltv_auth_timestamp";
 const EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -13,7 +14,8 @@ interface PasswordGateProps {
 const PasswordGate: React.FC<PasswordGateProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const storedTimestamp = localStorage.getItem(STORAGE_KEY);
@@ -28,21 +30,36 @@ const PasswordGate: React.FC<PasswordGateProps> = ({ children }) => {
     setIsAuthenticated(false);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const correctPassword = import.meta.env.VITE_APP_PASSWORD;
+    setIsLoading(true);
+    setError(null);
 
-    if (password === correctPassword) {
-      localStorage.setItem(STORAGE_KEY, Date.now().toString());
-      setIsAuthenticated(true);
-      setError(false);
-    } else {
-      setError(true);
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke('validate-password', {
+        body: { password }
+      });
+
+      if (functionError) {
+        setError("Unable to verify password. Please try again.");
+        return;
+      }
+
+      if (data?.success) {
+        localStorage.setItem(STORAGE_KEY, Date.now().toString());
+        setIsAuthenticated(true);
+      } else {
+        setError("Incorrect password");
+      }
+    } catch {
+      setError("Unable to verify password. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !isLoading) {
       handleSubmit(e);
     }
   };
@@ -74,22 +91,31 @@ const PasswordGate: React.FC<PasswordGateProps> = ({ children }) => {
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
-                setError(false);
+                setError(null);
               }}
               onKeyDown={handleKeyDown}
               placeholder="Password"
               className={`h-12 text-base ${error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
               autoFocus
+              disabled={isLoading}
             />
             {error && (
-              <p className="mt-2 text-sm text-red-500">Incorrect password</p>
+              <p className="mt-2 text-sm text-red-500">{error}</p>
             )}
           </div>
           <Button
             type="submit"
             className="w-full h-12 bg-harvard-crimson hover:bg-harvard-crimson-light text-white"
+            disabled={isLoading}
           >
-            Enter
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              "Enter"
+            )}
           </Button>
         </form>
       </div>
