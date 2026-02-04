@@ -1,0 +1,77 @@
+name: Supabase Keep-Alive
+
+# Runs daily to prevent Supabase free tier from pausing (7-day inactivity limit)
+# Uses INSERT/DELETE operations for more reliable activity detection
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allow manual trigger for testing
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate random string
+        id: random
+        run: echo "string=$(openssl rand -hex 8)" >> $GITHUB_OUTPUT
+
+      - name: INSERT row into keep_alive table
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://bcpwjwfubnpchoscvrum.supabase.co/rest/v1/keep_alive" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d '{"random_string": "${{ steps.random.outputs.string }}"}')
+
+          http_code=$(echo "$response" | tail -n1)
+          echo "INSERT response code: $http_code"
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "INSERT failed with status $http_code"
+            echo "$response"
+            exit 1
+          fi
+          echo "✓ INSERT successful"
+
+      - name: DELETE old rows from keep_alive table
+        run: |
+          # Delete rows older than 1 hour
+          cutoff=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -v-1H +%Y-%m-%dT%H:%M:%S.000Z)
+
+          response=$(curl -s -w "\n%{http_code}" -X DELETE \
+            "https://bcpwjwfubnpchoscvrum.supabase.co/rest/v1/keep_alive?created_at=lt.${cutoff}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          echo "DELETE response code: $http_code"
+          echo "✓ DELETE completed"
+
+      - name: READ from people table
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            "https://bcpwjwfubnpchoscvrum.supabase.co/rest/v1/people?limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          echo "READ response code: $http_code"
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "READ failed with status $http_code"
+            exit 1
+          fi
+          echo "✓ READ successful"
+
+      - name: Summary
+        run: |
+          echo "========================================"
+          echo "Supabase Keep-Alive completed!"
+          echo "Time: $(date -u)"
+          echo "Operations: INSERT, DELETE, READ"
+          echo "========================================"
