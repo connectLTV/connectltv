@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import ResultsPage from "./pages/ResultsPage";
 import NotFound from "./pages/NotFound";
+import PasswordGate from "./components/PasswordGate";
 
 const queryClient = new QueryClient();
 
@@ -15,13 +16,15 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <TooltipProvider>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/results" element={<ResultsPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          <Toaster />
-          <Sonner />
+          <PasswordGate>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/results" element={<ResultsPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            <Toaster />
+            <Sonner />
+          </PasswordGate>
         </TooltipProvider>
       </BrowserRouter>
     </QueryClientProvider>
