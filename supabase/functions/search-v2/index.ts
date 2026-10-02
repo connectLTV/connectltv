@@ -70,7 +70,7 @@ serve(async (req) => {
     (usage.prompt_tokens * PRICE.llmIn + usage.completion_tokens * PRICE.llmOut + usage.embedding_tokens * PRICE.embed) / 1e6 +
     usage.cohere_units * PRICE.cohereSearch;
 
-  // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const logSearch = async (row: Record<string, any>) => {
     try {
       await supabase.from("search_logs").insert({ function_name: "search-v2", query, ...row });
@@ -131,10 +131,10 @@ serve(async (req) => {
     // ---- Shared output plumbing ---------------------------------------------------------------
     const encoder = new TextEncoder();
     let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
-    // deno-lint-ignore no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const results: any[] = [];
     let firstResultMs: number | null = null;
-    // deno-lint-ignore no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const send = (event: Record<string, any>) => controller?.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
     const emitResult = (card: Record<string, unknown>, why: string) => {
       const timestamp = Date.now() - startTime;
@@ -144,7 +144,7 @@ serve(async (req) => {
       send({ type: "result", index: results.length, result, timestamp_ms: timestamp });
     };
 
-    // deno-lint-ignore no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const debug: Record<string, any> = { route, translation, translate_ms: translateMs, reranker };
 
     const run = async () => {

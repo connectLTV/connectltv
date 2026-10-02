@@ -84,7 +84,7 @@ const cleanObject = (o: unknown): Record<string, unknown> => {
 };
 
 // Drop unknown or empty keys so a sloppy model response can never produce an over-restrictive filter.
-// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const sanitizeTranslation = (raw: any, query: string): Translation => {
   const filters: Record<string, unknown> = {};
   const f = raw?.filters && typeof raw.filters === "object" ? raw.filters : {};

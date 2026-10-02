@@ -54,6 +54,7 @@ query -> embed (800 dims) -> `search_chunks` RPC, top 200 chunks globally (HNSW)
 Chunk types: `about` (summary; plus a current-role synthesis chunk), `work` (one per experience), `edu` (one per education), `skills` (all concatenated).
 
 ### Diagnosed defects
+0. **(Found during execution) HNSW row cap:** pgvector HNSW returns at most `hnsw.ef_search` (default 40) rows regardless of LIMIT. v1's "top 200 chunks" is really ~40 chunks, i.e. 30-40 people per query. This is the single biggest cause of missed matches. See `docs/benchmarks/embedding-benchmark.md`.
 1. Structured attributes are routed through vectors. `class_year` and `section` appear in no chunk text, so class-year queries retrieve arbitrary chunks. Biggest issue.
 2. Funnel too narrow: global top-200 chunks -> 50 people -> max 30. Verbose profiles crowd out sparse ones. Hard ceiling of 30 on every query.
 3. Thin chunks: many work chunks are just "Title at Company (Industry)". No person-level document, so cross-chunk queries (school + job) have nothing to match.
@@ -121,25 +122,25 @@ Chunk types: `about` (summary; plus a current-role synthesis chunk), `work` (one
 ## 5. Phase 1: Retrieval
 
 ### Step 1.1 Query logging (live function)
-- [ ] Migration: `search_logs` table (id, created_at, query text, route, result_count, time_to_first_result_ms, total_ms, error). No user identity. RLS on; service role writes only.
-- [ ] Add a non-blocking insert to `supabase/functions/search/index.ts` (must never fail or slow a search).
-- [ ] Test the identical change in `search-eval` first, then deploy to live `search`.
-- [ ] Verify rows appear after a test query.
+- [x] Migration: `search_logs` table (id, created_at, query text, route, result_count, time_to_first_result_ms, total_ms, error). No user identity. RLS on; service role writes only.
+- [x] Add a non-blocking insert to `supabase/functions/search/index.ts` (must never fail or slow a search).
+- [x] Test the identical change in `search-eval` first, then deploy to live `search`.
+- [x] Verify rows appear after a test query.
 
 ### Step 1.2 Eval harness and baseline
 Purpose: turn "doesn't feel complete" into numbers, and prove later versions are better on the same queries.
 
-- [ ] Create `supabase/functions/search-eval/`: a copy of the current pipeline with debug output reporting, per candidate person, the stage at which they were lost: `not_in_top_200_chunks`, `cut_at_top_50`, `below_0.35`, `dropped_by_llm`, or `returned` (with rank). Deploy as a separate function; live `search` untouched.
-- [ ] `eval/` layout:
+- [x] Create `supabase/functions/search-eval/`: a copy of the current pipeline with debug output reporting, per candidate person, the stage at which they were lost: `not_in_top_200_chunks`, `cut_at_top_50`, `below_0.35`, `dropped_by_llm`, or `returned` (with rank). Deploy as a separate function; live `search` untouched.
+- [x] `eval/` layout:
   - `eval/queries.jsonl`: `{id, query, type, failure_class, expected_person_ids, expected_count, notes}`. Use person_id UUIDs only, no names or emails.
   - `eval/run_eval.py`: target is selectable (`search`, `search-eval`, `search-v2`, or a local `supabase functions serve`). Runs each query 2-3 times.
   - `eval/runs/` raw outputs: **gitignored** (contain alumni data).
   - `eval/scorecards/<date>-<label>.md`: aggregate metrics only; committed.
-- [ ] Case types:
+- [x] Case types:
   - Enumerable (exact answer set from DB columns) -> recall, count accuracy.
   - Known-item (specific people who must appear) -> hit rate, rank.
   - Open-ended (no exact answer) -> LLM-judged precision, spot-checked by Vincent; judgments frozen and reused.
-- [ ] Mine failure candidates from the DB / raw scrape across these classes (Vincent wants variety, not only conjunctions; a significant share may be conjunctive):
+- [x] Mine failure candidates from the DB / raw scrape across these classes (Vincent wants variety, not only conjunctions; a significant share may be conjunctive):
   - Conjunctive (title x company, school x industry, class year x location) with small exactly-known answer sets. Seed: "software engineers at McKinsey" -> Vincent Huang.
   - Aliases and abbreviations (BCG / Boston Consulting Group, Meta / Facebook, VC / venture capital).
   - High-cardinality sets (e.g. McKinsey alumni: 275 true matches).
@@ -162,9 +163,9 @@ Purpose: turn "doesn't feel complete" into numbers, and prove later versions are
 - [ ] Produce and commit the baseline scorecard `eval/scorecards/<date>-baseline.md`. Freeze it.
 
 ### Step 1.3 Embedding and index benchmark
-- [ ] Offline, embed the chunk corpus (or a large sample) at 800, 1536, 3072 dims (`text-embedding-3-large`).
-- [ ] Compare exact scan vs HNSW at each size: recall vs exact-3072 ground truth, eval-set recall, latency, storage (MB), including `halfvec`.
-- [ ] Deliver one table: recall x megabytes x latency per config, with a recommendation (expectation: at ~31k chunks, exact scan may be fast enough to drop HNSW entirely).
+- [x] Offline, embed the chunk corpus (or a large sample) at 800, 1536, 3072 dims (`text-embedding-3-large`).
+- [x] Compare exact scan vs HNSW at each size: recall vs exact-3072 ground truth, eval-set recall, latency, storage (MB), including `halfvec`.
+- [x] Deliver one table: recall x megabytes x latency per config, with a recommendation (expectation: at ~31k chunks, exact scan may be fast enough to drop HNSW entirely).
 - [ ] Get Vincent's decision on dimension / index / Supabase tier if the recommendation needs more storage. If it fits the current tier, proceed.
 
 ### Step 1.4 Structured field enrichment (37 fields)
@@ -266,6 +267,19 @@ Goal: let users explore themes and trends ("what are 2023 grads doing now?", "wh
 6. Any ceiling on the number of explained results for very large semantic result sets — decide from eval latency/cost data.
 
 ## 8. Change log
+
+### Findings needing Vincent's attention
+- **RLS is off on the alumni tables** (`people`, `experiences`, `educations`, `skills`, `chunks` and the legacy tables). The public anon key (in the frontend bundle and the repo) can read every row, including emails, directly through the REST API, bypassing the password gate, and has write grants. The frontend never reads tables directly, so enabling RLS should not break the live app, but it is a change to live production that was not authorized, so it has NOT been made. Proposed fix is in `docs/CUTOVER.md`. All new tables created by this work have RLS on and no anon access.
+- The live `search` function itself is callable by anyone holding the anon key (the password gate is client-side only).
+
+### Spend ledger (OpenAI account ceiling: $20)
+| Job | Cost |
+|---|---|
+| Chunk embeddings at 3072 dims for the benchmark | $0.18 |
+| Title classification (13,174 title x industry pairs) | $0.58 |
+| Baseline eval run (search-eval) | ~$1.0 |
+
+### Log
 
 - 2026-10-02: Plan created.
 - 2026-10-02: Replaced the cut-over sign-off gate with isolation (v2-named backend, local-only frontend). All commits on `enhancements`.
