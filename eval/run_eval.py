@@ -21,7 +21,7 @@ import lib
 PRICES = {"gpt-4.1-mini": (0.40, 1.60)}
 
 
-def run_query(target, case, timeout=300):
+def run_query(target, case, timeout=75, deadline=180):
     key = lib.anon_key()
     body = {"query": case["query"], "stream": True, "track_person_ids": case["expected_person_ids"]}
     req = urllib.request.Request(
@@ -38,6 +38,9 @@ def run_query(target, case, timeout=300):
                 out["ids"] = [x.get("person_id") for x in data.get("results", [])]
             else:
                 for raw in r:
+                    if time.time() - t0 > deadline:
+                        out["error"] = "deadline exceeded"
+                        break
                     line = raw.decode("utf-8", "replace").strip()
                     if not line.startswith("data: "):
                         continue
@@ -219,9 +222,12 @@ def main():
         print(f"retrying {len(jobs)} errored requests")
         with cf.ThreadPoolExecutor(args.concurrency) as ex:
             futs = {ex.submit(run_query, data["target"], by_id[cid]): (cid, i) for cid, i in jobs}
-            for f in cf.as_completed(futs):
+            for n, f in enumerate(cf.as_completed(futs), 1):
                 cid, i = futs[f]
                 data["results"][cid][i] = f.result()
+                if n % 10 == 0:
+                    print(f"  {n}/{len(jobs)} retried", flush=True)
+                    run_path.write_text(json.dumps(data))
         run_path.write_text(json.dumps(data))
     else:
         todo = [c for c in cases if not args.only or c["failure_class"] in args.only.split(",")]
