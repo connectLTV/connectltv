@@ -166,7 +166,7 @@ Purpose: turn "doesn't feel complete" into numbers, and prove later versions are
 - [x] Offline, embed the chunk corpus (or a large sample) at 800, 1536, 3072 dims (`text-embedding-3-large`).
 - [x] Compare exact scan vs HNSW at each size: recall vs exact-3072 ground truth, eval-set recall, latency, storage (MB), including `halfvec`.
 - [x] Deliver one table: recall x megabytes x latency per config, with a recommendation (expectation: at ~31k chunks, exact scan may be fast enough to drop HNSW entirely).
-- [x] No decision needed: the recommended configuration fits the free tier (database is about 380 MB of 500 MB with v1 and v2 side by side; about 120 MB after the v1 clean-up in `docs/CUTOVER.md`).
+- [x] No decision needed: the recommended configuration fits the free tier (database is about 420 MB of 500 MB with v1 and v2 side by side, which is close to the limit; about 200 MB after the v1 clean-up in `docs/CUTOVER.md`).
 
 ### Step 1.4 Structured field enrichment (37 fields)
 Rule used to choose: include what is derivable from data we already hold; defer what needs external data or leans on job descriptions (only 53% coverage).
