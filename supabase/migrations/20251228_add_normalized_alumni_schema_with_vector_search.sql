@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS chunks (
   text_norm TEXT,
   text_hash TEXT NOT NULL,
   source_id UUID,
-  embedding vector(2000),
+  embedding vector(800),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -132,12 +132,12 @@ COMMENT ON COLUMN chunks.chunk_type IS 'Type of chunk: about, work, edu, skills'
 COMMENT ON COLUMN chunks.text_raw IS 'Original text content';
 COMMENT ON COLUMN chunks.text_norm IS 'Normalized text (lowercase, trimmed)';
 COMMENT ON COLUMN chunks.text_hash IS 'SHA256 hash of text for deduplication';
-COMMENT ON COLUMN chunks.embedding IS 'OpenAI text-embedding-3-large vector (2000 dimensions)';
+COMMENT ON COLUMN chunks.embedding IS 'OpenAI text-embedding-3-large vector truncated to 800 dimensions';
 
 CREATE INDEX IF NOT EXISTS idx_chunks_person_id ON chunks(person_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_chunk_type ON chunks(chunk_type);
 
--- HNSW vector index for fast semantic search (2000 dimensions to fit within limit)
+-- HNSW vector index for fast semantic search (800 dimensions)
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON chunks
 USING hnsw (embedding vector_cosine_ops);
 
@@ -145,7 +145,7 @@ USING hnsw (embedding vector_cosine_ops);
 -- 6. CREATE search_chunks RPC FUNCTION
 -- ============================================================================
 CREATE OR REPLACE FUNCTION search_chunks(
-  query_embedding vector(2000),
+  query_embedding vector(800),
   match_count int DEFAULT 200
 )
 RETURNS TABLE (
@@ -171,4 +171,4 @@ AS $$
   LIMIT match_count;
 $$;
 
-COMMENT ON FUNCTION search_chunks IS 'Performs vector similarity search on chunks using text-embedding-3-large (2000 dimensions). Returns top N most similar chunks with similarity scores.';
+COMMENT ON FUNCTION search_chunks IS 'Performs vector similarity search on chunks using text-embedding-3-large (800 dimensions). Returns top N most similar chunks with similarity scores.';

@@ -152,28 +152,28 @@ Purpose: turn "doesn't feel complete" into numbers, and prove later versions are
   - Paraphrase ("people who started companies" -> founders).
   - Structured attributes invisible to vectors (class year, instructor, location-only).
   - NOT name lookup (out of scope).
-- [ ] Run candidates against the current system; keep the failures plus a sample of passes (so the suite can detect regressions). Target roughly 60-100 cases total.
-- [ ] Give Vincent the mined list to skim (regex-based ground truth is imperfect); apply his corrections.
-- [ ] Metrics on every run:
+- [x] Run candidates against the current system; keep the failures plus a sample of passes (so the suite can detect regressions). Target roughly 60-100 cases total.
+- [ ] (waiting on Vincent, non-blocking; the list is in `eval/runs/cases_for_review.md`, gitignored because it has names) Give Vincent the mined list to skim (regex-based ground truth is imperfect); apply his corrections.
+- [x] Metrics on every run:
   - Recall@10, @30, @all · known-item hit rate and rank · count accuracy (enumerable)
   - Precision (LLM-judged) on open-ended
   - **Time to first result** (request -> first complete `result` event) — headline metric
   - Total time · cost per query (tokens) · stability across repeated runs
   - Per-stage loss attribution (baseline only, via `search-eval`)
-- [ ] Produce and commit the baseline scorecard `eval/scorecards/<date>-baseline.md`. Freeze it.
+- [x] Produce and commit the baseline scorecard `eval/scorecards/<date>-baseline.md`. Freeze it.
 
 ### Step 1.3 Embedding and index benchmark
 - [x] Offline, embed the chunk corpus (or a large sample) at 800, 1536, 3072 dims (`text-embedding-3-large`).
 - [x] Compare exact scan vs HNSW at each size: recall vs exact-3072 ground truth, eval-set recall, latency, storage (MB), including `halfvec`.
 - [x] Deliver one table: recall x megabytes x latency per config, with a recommendation (expectation: at ~31k chunks, exact scan may be fast enough to drop HNSW entirely).
-- [ ] Get Vincent's decision on dimension / index / Supabase tier if the recommendation needs more storage. If it fits the current tier, proceed.
+- [x] No decision needed: the recommended configuration fits the free tier (database is about 380 MB of 500 MB with v1 and v2 side by side; about 120 MB after the v1 clean-up in `docs/CUTOVER.md`).
 
 ### Step 1.4 Structured field enrichment (37 fields)
 Rule used to choose: include what is derivable from data we already hold; defer what needs external data or leans on job descriptions (only 53% coverage).
 
-- [ ] Schema migration (additive): new columns on `people` / `experiences` / `educations`, plus a `companies` table (canonical name, aliases, size, size bucket, industry) and FK from experiences. Index filterable columns.
-- [ ] Enrichment scripts in `scripts/enrichment/` (idempotent, resumable, results cached in DB; LLM classification in batches with a fixed prompt and versioned label set).
-- [ ] Fields:
+- [x] Schema migration (additive): new columns on `people` / `experiences` / `educations`, plus a `companies` table (canonical name, aliases, size, size bucket, industry) and FK from experiences. Index filterable columns.
+- [x] Enrichment scripts in `scripts/enrichment/` (idempotent, resumable, results cached in DB; LLM classification in batches with a fixed prompt and versioned label set).
+- [x] Fields:
 
 | Area | Fields | Derivation |
 |---|---|---|
@@ -189,39 +189,39 @@ Rule used to choose: include what is derivable from data we already hold; defer 
 | Outreach (1) | has_email | Present |
 | Background (2) | technical background; military veteran | LLM over roles, education, skills |
 
-- [ ] Supporting derived fields needed by the above: each experience tagged pre-HBS / during / post-HBS; first post-HBS role per person; `is_current` verified.
-- [ ] Profile richness score per person (has about, number of roles with descriptions, skills present, educations present) for ordering purely structured results.
-- [ ] Known limitation to document: company size is today's size, not size when the person joined (accurate enough for recent grads; proper fix needs founded-year data, which is in the backlog).
-- [ ] Validation: sample 50 people per LLM-classified field, check accuracy, report in change log; fix prompt if a field is below ~90%.
-- [ ] Replace client-side `extractFunction`: the search response returns the stored function of the current role; the Function filter uses it. No visual change.
-- [ ] Add enumerable eval cases for the new fields (e.g. "joined a startup right after graduation", "founders", "VCs", "career switchers into product").
-- [ ] Keep `docs/structured-fields-backlog.md` current.
+- [x] Supporting derived fields needed by the above: each experience tagged pre-HBS / during / post-HBS; first post-HBS role per person; `is_current` verified.
+- [x] Profile richness score per person (has about, number of roles with descriptions, skills present, educations present) for ordering purely structured results.
+- [x] Known limitation to document: company size is today's size, not size when the person joined (accurate enough for recent grads; proper fix needs founded-year data, which is in the backlog).
+- [x] Validation: sample 50 people per LLM-classified field, check accuracy, report in change log; fix prompt if a field is below ~90%.
+- [x] Replace client-side `extractFunction`: the search response returns the stored function of the current role; the Function filter uses it. No visual change.
+- [x] Add enumerable eval cases for the new fields (e.g. "joined a startup right after graduation", "founders", "VCs", "career switchers into product").
+- [x] Keep `docs/structured-fields-backlog.md` current.
 
 ### Step 1.5 New retrieval pipeline (`search-v2`)
-- [ ] **Query translation:** small fast LLM call with structured output -> `{filters: {...}, semantic_text, route}` over the filterable fields (class year, instructor, location/metro/country, current and past company (canonical), school, industry, size bucket, function, seniority, founder/investor flags, sector tags, current-vs-past, pre/post-HBS timing, etc.). Run in parallel with the query embedding call. Include alias handling (BCG, Meta/Facebook). Fallback if latency regresses: skip translation for queries with no structured-looking terms.
-- [ ] **Routing** per the table in section 3 (purely structured / hybrid / purely semantic).
-- [ ] **Person-level profile document** per person (headline, current role, role history summary, education, skills, sector tags; include name for keyword index). Embed it and keyword-index it. Solves cross-chunk queries.
-- [ ] **Keyword channel:** generated `tsvector` columns + GIN indexes on chunk text and profile documents; trigram index on company names. Consider true BM25 only if evals show Postgres FTS ranking is the bottleneck.
-- [ ] **Hybrid fusion:** new RPC(s) combining dense + keyword via reciprocal rank fusion, accepting an optional person-id / filter restriction.
-- [ ] **Funnel restructure:** per-person retrieval instead of global top-200 chunks; remove the 0.35 floor; replace the fixed 50/30 caps with an adaptive cutoff; apply the embedding/index choice from step 1.3. Re-tune or replace the 0.80/0.20 scoring blend against the eval set.
-- [ ] **Explanations and streaming:** keep the SSE event contract (`start`, `result`, `complete`, `error`) so the frontend barely changes; parallel batches of ~50 for large sets; purely structured results stream without `why_relevant`.
-- [ ] Query logging in `search-v2` (same table, with route).
-- [ ] Frontend: minimal changes only (function field from server; tolerate results without explanations — already handled by fallback).
-- [ ] Run the eval suite after each sub-change; commit scorecards; iterate until: enumerable recall ~100% with correct counts, known-item hit rate well above baseline, precision not worse, time to first result not materially worse than baseline.
+- [x] **Query translation:** small fast LLM call with structured output -> `{filters: {...}, semantic_text, route}` over the filterable fields (class year, instructor, location/metro/country, current and past company (canonical), school, industry, size bucket, function, seniority, founder/investor flags, sector tags, current-vs-past, pre/post-HBS timing, etc.). Run in parallel with the query embedding call. Include alias handling (BCG, Meta/Facebook). Fallback if latency regresses: skip translation for queries with no structured-looking terms.
+- [x] **Routing** per the table in section 3 (purely structured / hybrid / purely semantic).
+- [x] **Person-level profile document** per person (headline, current role, role history summary, education, skills, sector tags; include name for keyword index). Embed it and keyword-index it. Solves cross-chunk queries.
+- [x] **Keyword channel:** generated `tsvector` columns + GIN indexes on chunk text and profile documents; trigram index on company names. Consider true BM25 only if evals show Postgres FTS ranking is the bottleneck.
+- [x] **Hybrid fusion:** new RPC(s) combining dense + keyword via reciprocal rank fusion, accepting an optional person-id / filter restriction.
+- [x] **Funnel restructure:** per-person retrieval instead of global top-200 chunks; remove the 0.35 floor; replace the fixed 50/30 caps with an adaptive cutoff; apply the embedding/index choice from step 1.3. Re-tune or replace the 0.80/0.20 scoring blend against the eval set.
+- [x] **Explanations and streaming:** keep the SSE event contract (`start`, `result`, `complete`, `error`) so the frontend barely changes; parallel batches of ~50 for large sets; purely structured results stream without `why_relevant`.
+- [x] Query logging in `search-v2` (same table, with route).
+- [x] Frontend: minimal changes only (function field from server; tolerate results without explanations — already handled by fallback).
+- [x] Run the eval suite after each sub-change; commit scorecards; iterate until: enumerable recall ~100% with correct counts, known-item hit rate well above baseline, precision not worse, time to first result not materially worse than baseline.
 
 ### Step 1.6 Cohere reranker A/B
-- [ ] Variant A: LLM does relevance + ordering + explanation (as built in 1.5).
-- [ ] Variant B: Cohere `rerank-v3.5` scores a wide candidate set (hundreds); threshold/ordering from reranker; LLM only writes explanations for returned results.
-- [ ] Compare on the full suite: recall, precision, time to first result, total time, cost. Mind trial-key rate limits when running the suite.
-- [ ] Recommend; if B wins, Vincent creates a production Cohere key and it is set as a Supabase secret.
+- [x] Variant A: LLM does relevance + ordering + explanation (as built in 1.5).
+- [x] Variant B: Cohere `rerank-v3.5` scores a wide candidate set (hundreds); threshold/ordering from reranker; LLM only writes explanations for returned results.
+- [x] Compare on the full suite: recall, precision, time to first result, total time, cost. Mind trial-key rate limits when running the suite.
+- [x] Recommend; if B wins, Vincent creates a production Cohere key and it is set as a Supabase secret.
 
 ### Step 1.7 Local frontend integration and cut-over preparation
-- [ ] Point the local frontend (on `enhancements`) at `search-v2`; verify the existing pages behave as before.
-- [ ] Present final scorecard vs baseline.
-- [ ] Write `docs/CUTOVER.md`: the exact steps for Vincent to cut production over (deploy frontend, optionally promote `search-v2` to `search`, delete `semantic-search` and `search-eval`, set production secrets). Do NOT perform these.
-- [ ] Reconcile migrations with production (fix the `vector(2000)` drift; ensure all new schema is captured in committed migrations).
-- [ ] Update `CLAUDE.md` (gitignored), `README.md`, `SEARCH_DEPLOYMENT.md`, and `ConnectLTV Search Guide.md` + `PromptingGuide.tsx` (the "Limitations" section changes: company characteristics, career transitions, and current-vs-past become supported).
-- [ ] Remove the hardcoded duplicate Supabase URL/anon key in `alumniService.ts` in favour of the shared client config (low priority tidy-up).
+- [x] Point the local frontend (on `enhancements`) at `search-v2`; verify the existing pages behave as before.
+- [x] Present final scorecard vs baseline.
+- [x] Write `docs/CUTOVER.md`: the exact steps for Vincent to cut production over (deploy frontend, optionally promote `search-v2` to `search`, delete `semantic-search` and `search-eval`, set production secrets). Do NOT perform these.
+- [x] Reconcile migrations with production (the December migration now says 800 dims like production; all new schema is in `supabase/migrations/2026100200000*`).
+- [x] Update `CLAUDE.md` (gitignored), `README.md`, `SEARCH_DEPLOYMENT.md`, and `ConnectLTV Search Guide.md` + `PromptingGuide.tsx` (the "Limitations" section changes: company characteristics, career transitions, and current-vs-past become supported).
+- [ ] (skipped: `integrations/supabase/client.ts` is an auto-generated file marked do-not-edit and does not export the values) Remove the hardcoded duplicate Supabase URL/anon key in `alumniService.ts`.
 
 ---
 
@@ -230,27 +230,27 @@ Rule used to choose: include what is derivable from data we already hold; defer 
 Goal: let users explore themes and trends ("what are 2023 grads doing now?", "which sectors are founders clustering in?") without exposing a browsable roster.
 
 ### Step 2.1 Design (resolve open questions first, see section 7)
-- [ ] Decide hosting for the agent backend (the Agent SDK needs a Node or Python runtime; Supabase Edge/Deno may not be suitable — evaluate and propose to Vincent).
+- [ ] (local backend built in `agent/`; production hosting and auth left to Vincent, see `agent/README.md`) Decide hosting for the agent backend (the Agent SDK needs a Node or Python runtime; Supabase Edge/Deno may not be suitable — evaluate and propose to Vincent).
 - [x] Anthropic API key: working (see section 4; do not send the workspace header).
-- [ ] Until production hosting is decided, run the agent backend locally alongside the local frontend.
-- [ ] Use the latest Claude models; pick per cost/latency.
+- [x] Until production hosting is decided, run the agent backend locally alongside the local frontend.
+- [x] Use the latest Claude models; pick per cost/latency.
 
 ### Step 2.2 Tools (shared with the search layer)
-- [ ] `search_alumni(filters, semantic_text, limit)` — wraps the Phase 1 pipeline.
-- [ ] `count_alumni(filters)`.
-- [ ] `aggregate(group_by, filters)` — counts/distributions by any structured field (industry, function, sector tag, size bucket, metro, class year, ...).
-- [ ] `get_profile(person_id)`.
-- [ ] **Enforce confidentiality in the tool layer:** hard cap on people returned per call and per conversation, aggregates preferred over lists, no bulk export, minimum group size for aggregates if needed. A prompt instruction is not a control.
-- [ ] Rate limiting and logging of agent sessions/tool calls (no user identity beyond what exists).
+- [x] `search_alumni(filters, semantic_text, limit)` — wraps the Phase 1 pipeline.
+- [x] `count_alumni(filters)`.
+- [x] `aggregate(group_by, filters)` — counts/distributions by any structured field (industry, function, sector tag, size bucket, metro, class year, ...).
+- [x] `get_profile(person_id)`.
+- [x] **Enforce confidentiality in the tool layer:** hard cap on people returned per call and per conversation, aggregates preferred over lists, no bulk export, minimum group size for aggregates if needed. A prompt instruction is not a control.
+- [x] Rate limiting and logging of agent sessions/tool calls (no user identity beyond what exists).
 
 ### Step 2.3 Explore page
-- [ ] New route (e.g. `/explore`) behind the same `PasswordGate`; entry point from the landing page that does not disturb the existing layout.
-- [ ] Conversational UI with streaming; carry over existing styling: Harvard crimson theme, shadcn components, `AlumniCard` / `AlumniProfile` for any people surfaced.
-- [ ] Existing search pages unchanged.
+- [x] New route (e.g. `/explore`) behind the same `PasswordGate`; entry point from the landing page that does not disturb the existing layout.
+- [x] Conversational UI with streaming; carry over existing styling: Harvard crimson theme, shadcn components, `AlumniCard` / `AlumniProfile` for any people surfaced.
+- [x] Existing search pages unchanged.
 
 ### Step 2.4 Agent evals
-- [ ] Small eval set for the agent: aggregate questions with ground truth from the DB (counts, top-N distributions), plus checks that caps cannot be bypassed (attempts to dump the roster must fail).
-- [ ] Latency and cost per session.
+- [ ] (written as `agent/src/eval.ts`; NOT RUN: Anthropic credit exhausted) Small eval set for the agent: aggregate questions with ground truth from the DB (counts, top-N distributions), plus checks that caps cannot be bypassed (attempts to dump the roster must fail).
+- [ ] (reported by `npm run eval`; NOT RUN) Latency and cost per session.
 
 ### Step 2.5 Launch
 - [ ] Vincent sign-off, deploy, update the user guide.
@@ -273,14 +273,37 @@ Goal: let users explore themes and trends ("what are 2023 grads doing now?", "wh
 - The live `search` function itself is callable by anyone holding the anon key (the password gate is client-side only).
 
 ### Spend ledger (OpenAI account ceiling: $20)
-| Job | Cost |
+| Job | Cost (approx.) |
 |---|---|
-| Chunk embeddings at 3072 dims for the benchmark | $0.18 |
-| Title classification (13,174 title x industry pairs) | $0.58 |
-| Baseline eval run (search-eval) | ~$1.0 |
+| Embeddings: chunks at 3072 dims for the benchmark; person documents (3 builds) | $0.55 |
+| Title classification, first attempt (discarded after audit) | $0.58 |
+| Title classification, validated format | $1.53 |
+| Person classification (2,128 people) | $1.10 |
+| Investor firm classification | $0.05 |
+| Baseline eval (v1, 2 runs) | $1.0 |
+| search-v2 eval runs (6 full or partial runs) | $1.5 |
+| Translation-only evals and label audits | $0.6 |
+| Eval judging with gpt-4.1 (about 1,200 verdicts) | $1.5 |
+| **Total** | **about $8.5 of $20** (estimated from token counts; check the OpenAI dashboard for the exact figure) |
+
+Anthropic account: used for early eval judging and label audits, then **ran out of credit** ("credit balance is too low").
+It was not given a ceiling and its starting balance is unknown. Judging was moved to OpenAI gpt-4.1 and all verdicts redone
+with that one judge so scorecards are comparable. The Explore agent cannot be run until credit is added.
 
 ### Log
 
 - 2026-10-02: Plan created.
 - 2026-10-02: Replaced the cut-over sign-off gate with isolation (v2-named backend, local-only frontend). All commits on `enhancements`.
 - 2026-10-02: Keys verified (OpenAI new account, $10 ceiling; Cohere production; Anthropic works without workspace header). Free DB tier retained.
+- 2026-10-02: Step 1.1 done. Query logging live in `search`; `search-eval` deployed.
+- 2026-10-02: Step 1.2 done. 131-case suite (stratified random sample of 279 mined candidates, so pass rates are unbiased). Baseline: recall 39%, known-item hit rate 75%, precision 62%, open-ended precision 85%, time to first result 1.8 s median. 85% of expected people were lost at the first stage because of the HNSW row cap.
+- 2026-10-02: Step 1.3 done. Keep 800 dims; exact scan; no tier change. See `docs/benchmarks/embedding-benchmark.md`.
+- 2026-10-02: Step 1.4 done. 37 fields in `person_facts` / `experience_facts` / `education_facts` / `companies`. Validation in `docs/benchmarks/label-validation.md`: founder, investor, role-type, technical and veteran flags are at or above 90% agreement; function, seniority, archetypes and sector tags are 76-87% and treated as approximate (sector tags are never a hard filter).
+- 2026-10-02: Step 1.5 done. `search-v2` final scorecard: recall 98%, known-item hit rate 100%, precision 95%, open-ended precision 94%, time to first result 1.2 s median / 3.2 s p95 (baseline p95 2.6 s), cost $0.0021 per query (baseline $0.0036). Topic queries take about 3.5 s to first result versus about 2 s in v1: slower, in exchange for 2-4x as many relevant people.
+- 2026-10-02: Step 1.6 done. Cohere reranker not adopted (no clear gain); option kept. See `docs/benchmarks/reranker-ab.md`.
+- 2026-10-02: Step 1.7 done except Vincent's cut-over. Local frontend verified in headless Chrome on `search-v2`.
+- 2026-10-02: Deviation: the eval judge changed twice. Claude Haiku mis-judged clear matches; Claude Sonnet was reliable but the Anthropic credit ran out; final scorecards use gpt-4.1 for every verdict.
+- 2026-10-02: Deviation: an adaptive cutoff replaced the fixed "top N = 50" for explained results: the LLM judges candidates in rank order in batches and stops when a batch is less than half relevant (ceiling 180 people).
+- 2026-10-02: Deviation: purely structured results show the card's existing fallback text (experience summary) in the "Why relevant" box, as agreed; it reads as a repeat of the experience line. Hiding the box when there is no explanation would be a one-line card change if wanted.
+- 2026-10-02: Phase 2 built: `agent/` backend, `v2_aggregate`, `explore_logs`, `/explore` page. Tool-layer limits verified by `npm run test:tools`. **Blocked:** end-to-end agent run and agent eval need Anthropic credit.
+

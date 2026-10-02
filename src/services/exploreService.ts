@@ -3,6 +3,9 @@ import { Alumni, transformResult } from "@/services/alumniService";
 // The Explore agent backend (agent/ in this repo). In development Vite proxies /api/explore to it.
 const EXPLORE_API = import.meta.env.VITE_EXPLORE_API || "/api/explore";
 
+// Explore needs its own backend. Show the entry point in development, or in a build that was given the backend's URL.
+export const EXPLORE_ENABLED = import.meta.env.DEV || Boolean(import.meta.env.VITE_EXPLORE_API);
+
 export interface ExploreCallbacks {
   onSession?: (conversationId: string) => void;
   onText?: (delta: string) => void;

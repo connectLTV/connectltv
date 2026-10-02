@@ -7,6 +7,7 @@ import { Compass, Search } from "lucide-react";
 import SearchExamples from "@/components/SearchExamples";
 import PromptingGuide from "@/components/PromptingGuide";
 import { warmSearch } from "@/services/alumniService";
+import { EXPLORE_ENABLED } from "@/services/exploreService";
 
 const LandingPage: React.FC = () => {
   const [query, setQuery] = useState("");
@@ -38,12 +39,14 @@ const LandingPage: React.FC = () => {
             <span className="text-gray-600 text-sm">Harvard Business School</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" asChild className="text-harvard-crimson border-harvard-crimson/40 hover:bg-red-50 hover:text-harvard-crimson">
-              <Link to="/explore">
-                <Compass className="mr-2 h-4 w-4" />
-                Explore
-              </Link>
-            </Button>
+            {EXPLORE_ENABLED && (
+              <Button variant="outline" asChild className="text-harvard-crimson border-harvard-crimson/40 hover:bg-red-50 hover:text-harvard-crimson">
+                <Link to="/explore">
+                  <Compass className="mr-2 h-4 w-4" />
+                  Explore
+                </Link>
+              </Button>
+            )}
             <PromptingGuide />
           </div>
         </div>

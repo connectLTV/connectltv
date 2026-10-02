@@ -51,6 +51,22 @@ Nothing here has been done.
    Note also that the search functions themselves are callable with only the anon key; the password gate is enforced
    in the browser, not on the server.
 
+## Explore agent (Phase 2)
+
+The Explore page and its backend (`agent/`) are built but **have not been run end to end with the model**: the
+Anthropic account ran out of credit during Phase 1 evaluation. The tool layer is tested against the live database
+(`npm run test:tools` in `agent/`), and the server, streaming and UI are verified up to the model call.
+
+To finish and launch it:
+1. Add credit to the Anthropic account whose key is in `supabase/.env`.
+2. `cd agent && npm install && npm start`, then `npm run eval` in a second terminal. Review the results and try
+   `/explore` locally (`npm run dev` at the repo root).
+3. Decide hosting and authentication for the backend (see "Not done here" in `agent/README.md`).
+4. Build the frontend with `VITE_EXPLORE_API=<backend URL>`. Without that variable a production build hides the
+   Explore button, so merging `enhancements` does not expose a broken page.
+5. Model and cost: the default model is `claude-opus-5-5`; each message is capped at $0.75. Set `EXPLORE_MODEL`
+   to a cheaper model if cost per question matters more than answer quality, and rerun the eval.
+
 ## Refreshing data later
 
 When alumni are added or re-scraped, after loading `people` / `experiences` / `educations` / `skills` / `chunks`:
