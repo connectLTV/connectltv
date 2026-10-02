@@ -171,7 +171,8 @@ def main(dry_run=False):
             function, seniority, role_type = lab["function"], lab["seniority"], lab["role_type"]
             is_founder, is_ft = lab["is_founder"], lab["is_founding_team"]
             emp = r.get("employmentType")
-            if emp == "Internship":
+            if emp == "Internship" or (role_type == "full_time" and rx(
+                    r"\bintern\b|internship|\bco-?op\b|summer (associate|analyst|intern|trainee)|\btrainee\b").search(e.get("title") or "")):
                 role_type, seniority = "internship", "intern"
             # Investor type comes from the firm (a title cannot tell VC from PE); angel investing from the title.
             inv = None
@@ -347,6 +348,14 @@ def main(dry_run=False):
     upsert("experience_facts", exp_rows, "exp_id")
     upsert("education_facts", edu_rows, "edu_id")
     upsert("person_facts", person_rows, "person_id")
+    # Refresh normalised company names, the schools list and the compact chunk vectors
+    import json
+    import urllib.request
+    key = lib.ENV["SUPABASE_SERVICE_ROLE_KEY"]
+    urllib.request.urlopen(urllib.request.Request(
+        f"{lib.SUPABASE_URL}/rest/v1/rpc/v2_refresh_helpers", data=json.dumps({}).encode(),
+        headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}), timeout=120).read()
+    print("  refreshed helper tables")
     return person_rows, exp_rows, edu_rows, company_rows
 
 

@@ -9,7 +9,7 @@ export interface Translation {
 
 export const TRANSLATE_SYSTEM = `You convert a natural-language search over a private directory of Harvard Business School alumni of the "Launching Tech Ventures" (LTV) course into structured filters plus residual semantic text. Everyone in the directory is an HBS LTV alum, so never filter on "HBS", "Harvard Business School", "MBA", "LTV" or "alumni" themselves. The current year is 2026.
 
-Return ONLY a JSON object: {"filters": {...}, "semantic": "...", "keywords": [...]}
+Return ONLY a JSON object: {"filters": {...}, "complete": true|false, "semantic": "...", "keywords": [...]}
 
 FILTERS (omit any key that the query does not clearly ask for; all given keys are ANDed):
 - "class_years": [int] HBS graduation years ("Class of 2025"). Or "class_year_min"/"class_year_max" for ranges ("recent grads" = min 2023; "graduated before 2015" = max 2014).
@@ -54,7 +54,8 @@ FUNCTION values: "engineering","product","design","data_analytics","marketing","
 RULES:
 1. Use a filter only when the query states that constraint explicitly or by a direct synonym. When unsure, leave the idea in "semantic". Never add a filter the query did not ask for (e.g. do not add degree_level when only a school is named; do not turn "operators" or "leaders" into a filter).
 2. Topics, sectors, technologies and domains (fintech, climate, AI, healthcare, crypto, consumer brands, robotics...) are NOT filters. Put them in "semantic" and "keywords".
-3. "semantic": ONLY the part of the request NOT captured by the filters, written as a short description of the ideal person. Do not repeat anything a filter already covers. Use "" when the filters capture the whole request (this is common).
+3. "complete": true when the filters express the ENTIRE request, so that every person passing the filters is a correct answer (this is common: class years, companies, titles, schools, locations, founders, investors, skills...). false when some part of the request (a topic, sector, technology, quality or anything else) is not expressed by a filter.
+   "semantic": when complete is false, ONLY the uncaptured part, written as a short description of the ideal person; do not repeat anything a filter already covers. When complete is true, "".
 4. "keywords": up to 8 distinctive lowercase words or short phrases for keyword search of the semantic part, including 2-3 close synonyms or related terms. No generic words (alumni, people, experience, work, expertise). Use [] when "semantic" is "".
 5. "X or Y" for the same field goes in one any-of list. Requirements on different jobs ("worked at Google and at McKinsey") go in separate "experiences" objects. A title and a company named together ("software engineers at McKinsey") describe the SAME job: one object.
 6. "VCs" / "venture capitalists" = person.is_investor true with investor_type ["vc"]. "private equity investors" = is_investor true with investor_type ["pe"]; likewise "angel investors" = ["angel"], "growth equity" = ["growth_equity"], "hedge fund" = ["hedge_fund"]. Plain "investors" = person.is_investor true. "founders" = person.ever_founded true.
@@ -63,20 +64,20 @@ RULES:
 8. "working in <industry>": if the industry is one of the industry_group values (venture capital / private equity = investing_vc_pe, healthcare, consulting, education, retail, real estate, ...), use experiences [{"is_current": true, "industry_group": [...]}] and leave "semantic" empty. Only narrower topics that are not an industry_group (fintech, climate, AI, crypto, edtech, robotics) go to "semantic".
 
 EXAMPLES:
-"McKinsey alumni" -> {"filters":{"experiences":[{"companies":["McKinsey","McKinsey & Company"]}]},"semantic":"","keywords":[]}
-"people with a law degree" -> {"filters":{"educations":[{"degree_level":["jd"]}]},"semantic":"","keywords":[]}
-"MIT graduates working in higher education" -> {"filters":{"educations":[{"schools":["MIT","Massachusetts Institute of Technology"]}],"experiences":[{"is_current":true,"industry_group":["education"]}]},"semantic":"","keywords":[]}
-"LTV students from the Class of 2025" -> {"filters":{"class_years":[2025]},"semantic":"","keywords":[]}
-"software engineers at McKinsey" -> {"filters":{"experiences":[{"companies":["McKinsey","McKinsey & Company"],"title_keywords":["software engineer","software developer","SWE"]}]},"semantic":"","keywords":[]}
-"Stanford graduates working in venture capital" -> {"filters":{"educations":[{"schools":["Stanford","Stanford University"]}],"experiences":[{"is_current":true,"industry_group":["investing_vc_pe"]}]},"semantic":"","keywords":[]}
-"founders in healthcare or biotech startups" -> {"filters":{"person":{"ever_founded":true}},"semantic":"founder of a healthcare or biotech startup","keywords":["healthcare","biotech","health tech","digital health","medical","therapeutics"]}
-"alumni who joined a startup right after graduating" -> {"filters":{"person":{"joined_startup_after_hbs":true}},"semantic":"","keywords":[]}
-"alumni with machine learning and AI expertise" -> {"filters":{},"semantic":"machine learning and AI expertise","keywords":["machine learning","artificial intelligence","ai","deep learning","ml","llm"]}
-"private equity investors in London" -> {"filters":{"person":{"is_investor":true,"investor_type":["pe"]},"locations":["London"]},"semantic":"","keywords":[]}
-"people who studied computer science" -> {"filters":{"educations":[{"field_keywords":["computer science"]}]},"semantic":"","keywords":[]}
-"UPenn graduates working in healthcare" -> {"filters":{"educations":[{"schools":["UPenn","University of Pennsylvania","Wharton","The Wharton School"]}],"experiences":[{"is_current":true,"industry_group":["healthcare_biotech"]}]},"semantic":"","keywords":[]}
-"Stanford or MIT alumni working in fintech" -> {"filters":{"educations":[{"schools":["Stanford","Stanford University","MIT","Massachusetts Institute of Technology"]}]},"semantic":"currently works in fintech","keywords":["fintech","payments","financial technology","banking","lending","insurtech"]}
-"Class of 2023 alumni based in London who worked at Google" -> {"filters":{"class_years":[2023],"locations":["London"],"experiences":[{"companies":["Google"]}]},"semantic":"","keywords":[]}`;
+"McKinsey alumni" -> {"filters":{"experiences":[{"companies":["McKinsey","McKinsey & Company"]}]},"complete":true,"semantic":"","keywords":[]}
+"people with a law degree" -> {"filters":{"educations":[{"degree_level":["jd"]}]},"complete":true,"semantic":"","keywords":[]}
+"MIT graduates working in higher education" -> {"filters":{"educations":[{"schools":["MIT","Massachusetts Institute of Technology"]}],"experiences":[{"is_current":true,"industry_group":["education"]}]},"complete":true,"semantic":"","keywords":[]}
+"LTV students from the Class of 2025" -> {"filters":{"class_years":[2025]},"complete":true,"semantic":"","keywords":[]}
+"software engineers at McKinsey" -> {"filters":{"experiences":[{"companies":["McKinsey","McKinsey & Company"],"title_keywords":["software engineer","software developer","SWE"]}]},"complete":true,"semantic":"","keywords":[]}
+"Stanford graduates working in venture capital" -> {"filters":{"educations":[{"schools":["Stanford","Stanford University"]}],"experiences":[{"is_current":true,"industry_group":["investing_vc_pe"]}]},"complete":true,"semantic":"","keywords":[]}
+"founders in healthcare or biotech startups" -> {"filters":{"person":{"ever_founded":true}},"complete":false,"semantic":"founder of a healthcare or biotech startup","keywords":["healthcare","biotech","health tech","digital health","medical","therapeutics"]}
+"alumni who joined a startup right after graduating" -> {"filters":{"person":{"joined_startup_after_hbs":true}},"complete":true,"semantic":"","keywords":[]}
+"alumni with machine learning and AI expertise" -> {"filters":{},"complete":false,"semantic":"machine learning and AI expertise","keywords":["machine learning","artificial intelligence","ai","deep learning","ml","llm"]}
+"private equity investors in London" -> {"filters":{"person":{"is_investor":true,"investor_type":["pe"]},"locations":["London"]},"complete":true,"semantic":"","keywords":[]}
+"people who studied computer science" -> {"filters":{"educations":[{"field_keywords":["computer science"]}]},"complete":true,"semantic":"","keywords":[]}
+"UPenn graduates working in healthcare" -> {"filters":{"educations":[{"schools":["UPenn","University of Pennsylvania","Wharton","The Wharton School"]}],"experiences":[{"is_current":true,"industry_group":["healthcare_biotech"]}]},"complete":true,"semantic":"","keywords":[]}
+"Stanford or MIT alumni working in fintech" -> {"filters":{"educations":[{"schools":["Stanford","Stanford University","MIT","Massachusetts Institute of Technology"]}]},"complete":false,"semantic":"currently works in fintech","keywords":["fintech","payments","financial technology","banking","lending","insurtech"]}
+"Class of 2023 alumni based in London who worked at Google" -> {"filters":{"class_years":[2023],"locations":["London"],"experiences":[{"companies":["Google"]}]},"complete":true,"semantic":"","keywords":[]}`;
 
 const ALLOWED_TOP = new Set(["class_years", "class_year_min", "class_year_max", "years_experience_min", "years_experience_max",
   "locations", "skills", "person", "experiences", "educations"]);
@@ -112,6 +113,8 @@ export const sanitizeTranslation = (raw: any, query: string): Translation => {
     }
   }
   let semantic = typeof raw?.semantic === "string" ? raw.semantic.trim() : "";
+  // The model states explicitly whether the filters cover the whole request; trust that over stray semantic text.
+  if (raw?.complete === true && !isEmpty(filters)) semantic = "";
   let keywords: string[] = Array.isArray(raw?.keywords) ? raw.keywords.filter((x: unknown) => typeof x === "string") : [];
   if (isEmpty(filters) && !semantic) semantic = query; // nothing understood: treat as plain semantic search
   if (!semantic) keywords = [];

@@ -21,9 +21,9 @@ import lib
 PRICES = {"gpt-4.1-mini": (0.40, 1.60)}
 
 
-def run_query(target, case, timeout=75, deadline=180):
+def run_query(target, case, timeout=75, deadline=180, options=None):
     key = lib.anon_key()
-    body = {"query": case["query"], "stream": True, "track_person_ids": case["expected_person_ids"]}
+    body = {"query": case["query"], "stream": True, "track_person_ids": case["expected_person_ids"], "options": options or {}}
     req = urllib.request.Request(
         f"{lib.SUPABASE_URL}/functions/v1/{target}", data=json.dumps(body).encode(), method="POST",
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}", "apikey": key})
@@ -148,7 +148,7 @@ def write_scorecard(label, data, cases, judgments):
     costs = [c for c in (cost_of(r) for r in all_runs) if c is not None]
     lines = [
         f"# Eval scorecard: {label}", "",
-        f"- Target function: `{data['target']}`", f"- Run at: {data['started']}",
+        f"- Target function: `{data['target']}`" + (f" with options `{json.dumps(data['options'])}`" if data.get("options") else ""), f"- Run at: {data['started']}",
         f"- Cases: {len(scored)} ({len(enum)} enumerable, {len(known)} known-item, {len(openq)} open-ended), {data['runs']} run(s) each",
         f"- Request errors: {sum(1 for r in all_runs if r['error'])} of {len(all_runs)}", "",
         "## Headline", "", "| Metric | Value |", "|---|---|",
@@ -207,9 +207,11 @@ def main():
     ap.add_argument("--concurrency", type=int, default=3)
     ap.add_argument("--rescore", help="label of a saved run to rescore")
     ap.add_argument("--judge", action="store_true", help="LLM-judge open-ended results (cached)")
+    ap.add_argument("--options", help='JSON passed to the function, e.g. {"reranker": "cohere"}')
     ap.add_argument("--retry-errors", help="label of a saved run: rerun only the requests that errored")
     args = ap.parse_args()
 
+    options = json.loads(args.options) if args.options else None
     cases = [json.loads(l) for l in (lib.EVAL_DIR / "queries.jsonl").read_text().splitlines() if l.strip()]
     lib.RUNS_DIR.mkdir(exist_ok=True)
     label = args.rescore or args.retry_errors or args.label or args.target
@@ -223,7 +225,7 @@ def main():
         jobs = [(cid, i) for cid, runs in data["results"].items() for i, r in enumerate(runs) if r["error"]]
         print(f"retrying {len(jobs)} errored requests")
         with cf.ThreadPoolExecutor(args.concurrency) as ex:
-            futs = {ex.submit(run_query, data["target"], by_id[cid]): (cid, i) for cid, i in jobs}
+            futs = {ex.submit(run_query, data["target"], by_id[cid], options=data.get("options")): (cid, i) for cid, i in jobs}
             for n, f in enumerate(cf.as_completed(futs), 1):
                 cid, i = futs[f]
                 data["results"][cid][i] = f.result()
@@ -233,11 +235,11 @@ def main():
         run_path.write_text(json.dumps(data))
     else:
         todo = [c for c in cases if not args.only or c["failure_class"] in args.only.split(",")]
-        data = {"target": args.target, "label": label, "runs": args.runs,
+        data = {"target": args.target, "label": label, "runs": args.runs, "options": options,
                 "started": datetime.datetime.now().isoformat(timespec="seconds"), "results": {}}
         jobs = [(c, i) for c in todo for i in range(args.runs)]
         with cf.ThreadPoolExecutor(args.concurrency) as ex:
-            futs = {ex.submit(run_query, args.target, c): (c, i) for c, i in jobs}
+            futs = {ex.submit(run_query, args.target, c, options=options): (c, i) for c, i in jobs}
             for n, f in enumerate(cf.as_completed(futs), 1):
                 c, _ = futs[f]
                 data["results"].setdefault(c["id"], []).append(f.result())

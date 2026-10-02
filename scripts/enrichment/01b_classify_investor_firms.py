@@ -41,7 +41,7 @@ if __name__ == "__main__":
                 if not f["desc"] and e.get("description"):
                     f["desc"] = e["description"][:200].replace("\n", " ")
     cache = load_cache("investor_firms")
-    todo = [(n, f"{f['ind'] or 'unknown industry'} | titles: {', '.join(t for t, _ in f['titles'].most_common(3))} | {f['desc']}")
+    todo = [(n, f"{f['ind'] or 'unknown industry'} | titles: {', '.join(t for t, _ in f['titles'].most_common(3) if t)} | {f['desc']}")
             for n, f in sorted(firms.items()) if n not in cache]
     print(f"{len(firms)} firms with investing roles; {len(todo)} to classify")
     batches = [list(enumerate(todo[i:i + 30])) for i in range(0, len(todo), 30)]

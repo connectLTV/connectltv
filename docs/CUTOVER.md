@@ -63,14 +63,4 @@ python3 02_classify_people.py            # labels new people only
 python3 03_derive_facts.py               # rebuilds all structured facts
 python3 04_build_person_search.py        # rebuilds documents; re-embeds only changed ones
 ```
-Then refresh the helper tables:
-```sql
-INSERT INTO chunk_vectors (chunk_id, person_id, chunk_type, embedding)
-SELECT chunk_id, person_id, chunk_type, embedding::halfvec(800) FROM chunks WHERE embedding IS NOT NULL
-ON CONFLICT (chunk_id) DO NOTHING;
-UPDATE companies SET norm_names = ARRAY(SELECT DISTINCT v2_norm(x) FROM unnest(canonical_name || aliases) x WHERE v2_norm(x) <> '');
-INSERT INTO schools (school_canonical, norm_name, people_count)
-SELECT school_canonical, v2_norm(school_canonical), count(DISTINCT person_id) FROM education_facts
-WHERE school_canonical IS NOT NULL GROUP BY 1 ON CONFLICT (school_canonical) DO UPDATE
-SET norm_name = EXCLUDED.norm_name, people_count = EXCLUDED.people_count;
-```
+`03_derive_facts.py` also refreshes the helper data (normalised company names, the schools list, the compact chunk vectors) by calling `v2_refresh_helpers()`.

@@ -8,7 +8,7 @@ import urllib.request
 
 import lib
 
-MODEL = "claude-sonnet-5"  # a strong judge; Haiku mis-judged clear matches
+MODEL = "gpt-4.1"  # stronger than the gpt-4.1-mini judge inside the search function
 
 
 def profile_text(p):
@@ -22,23 +22,24 @@ def profile_text(p):
 
 
 def ask(query, profile):
-    body = {"model": MODEL, "max_tokens": 8, "messages": [{"role": "user", "content":
-            f"Search query on an alumni directory: \"{query}\"\n\nProfile:\n{profile}\n\n"
-            "Would a careful user consider this person a correct result for the query? Every explicit constraint in the "
-            "query must be supported by the profile (a past role counts unless the query says current). "
-            "Answer with exactly YES or NO."}]}
-    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(),
-                                 headers={"x-api-key": lib.ENV["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
-                                          "content-type": "application/json"})
+    """One verdict from the judge model. Uses a stronger model than the one the search function uses to judge,
+    so the eval is not just the system agreeing with itself."""
+    prompt = (f"Search query on an alumni directory: \"{query}\"\n\nProfile:\n{profile}\n\n"
+              "Would a careful user consider this person a correct result for the query? Every explicit constraint in the "
+              "query must be supported by the profile (a past role counts unless the query says current). "
+              "Answer with exactly YES or NO.")
+    body = {"model": MODEL, "max_tokens": 3, "temperature": 0, "messages": [{"role": "user", "content": prompt}]}
     import time
-    for attempt in range(6):
+    for attempt in range(7):
+        req = urllib.request.Request("https://api.openai.com/v1/chat/completions", data=json.dumps(body).encode(),
+                                     headers={"Authorization": "Bearer " + lib.ENV["OPENAI_API_KEY"], "Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return json.load(r)["content"][0]["text"].strip().upper().startswith("YES")
-        except Exception:  # noqa: BLE001  (rate limits and transient errors)
-            if attempt == 5:
+            with urllib.request.urlopen(req, timeout=45) as r:
+                return json.load(r)["choices"][0]["message"]["content"].strip().upper().startswith("YES")
+        except Exception as e:  # noqa: BLE001  (rate limits and transient errors)
+            if attempt == 6 or getattr(e, "code", None) not in (429, 500, 502, 503, None):
                 raise
-            time.sleep(5 * (attempt + 1))
+            time.sleep(4 * (attempt + 1))
 
 
 def judge_run(data, cases, judgments):
@@ -64,6 +65,8 @@ def judge_run(data, cases, judgments):
                 judgments[f"{q}||{pid}"] = f.result()
             except Exception as e:  # noqa: BLE001
                 failed += 1
+                if failed <= 3:
+                    print("  judge error:", str(e)[:200])
     if failed:
         print(f"WARNING: {failed} pairs could not be judged; rerun with --judge to fill them in")
     return judgments
