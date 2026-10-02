@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import ResultsPage from "./pages/ResultsPage";
+import ExplorePage from "./pages/ExplorePage";
 import NotFound from "./pages/NotFound";
 import PasswordGate from "./components/PasswordGate";
 
@@ -20,6 +21,7 @@ const App = () => {
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/results" element={<ResultsPage />} />
+              <Route path="/explore" element={<ExplorePage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             <Toaster />

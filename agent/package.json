@@ -1,0 +1,24 @@
+{
+  "name": "connectltv-explore-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Explore agent backend for ConnectLTV (Claude Agent SDK). Runs next to the Vite frontend.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test:tools": "tsx src/tools.test.ts",
+    "eval": "tsx src/eval.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.287",
+    "@supabase/supabase-js": "^2.117.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

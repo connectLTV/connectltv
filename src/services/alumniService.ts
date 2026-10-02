@@ -37,7 +37,7 @@ export type SearchPhase = 'idle' | 'searching' | 'streaming' | 'complete' | 'err
 const SEARCH_FUNCTION = import.meta.env.VITE_SEARCH_FUNCTION || 'search-v2';
 
 // Transform raw result to Alumni interface
-const transformResult = (alumni: Record<string, unknown>, index: number): Alumni => {
+export const transformResult = (alumni: Record<string, unknown>, index: number): Alumni => {
   const currentTitle = (alumni.current_title || alumni.headline || '') as string;
   return {
     id: (alumni.person_id || `result-${index}-${Math.random().toString(36).substring(2, 9)}`) as string,

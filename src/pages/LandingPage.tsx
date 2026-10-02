@@ -1,9 +1,9 @@
 
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search } from "lucide-react";
+import { Compass, Search } from "lucide-react";
 import SearchExamples from "@/components/SearchExamples";
 import PromptingGuide from "@/components/PromptingGuide";
 import { warmSearch } from "@/services/alumniService";
@@ -37,7 +37,15 @@ const LandingPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-harvard-crimson mr-4">ConnectLTV</h1>
             <span className="text-gray-600 text-sm">Harvard Business School</span>
           </div>
-          <PromptingGuide />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild className="text-harvard-crimson border-harvard-crimson/40 hover:bg-red-50 hover:text-harvard-crimson">
+              <Link to="/explore">
+                <Compass className="mr-2 h-4 w-4" />
+                Explore
+              </Link>
+            </Button>
+            <PromptingGuide />
+          </div>
         </div>
       </header>
 
