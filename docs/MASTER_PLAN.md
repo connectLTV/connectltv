@@ -104,6 +104,13 @@ Chunk types: `about` (summary; plus a current-role synthesis chunk), `work` (one
 - Tooling verified 2026-10-02: supabase CLI 2.48.3 (logged in, linked, DB reachable), deno, node 22, gh (logged in), psql, docker. Use system `python3` (has supabase, openai, dotenv); the `proxycurl_enrichment/venv` is broken.
 - New edge-function secrets (e.g. `COHERE_API_KEY`, `ANTHROPIC_API_KEY`) must be set with `supabase secrets set`; currently set: APP_PASSWORD, OPENAI_API_KEY, SUPABASE_*.
 - Never print secret values. Never commit `.env` files.
+- **Keys and budget (set 2026-10-02):**
+  - OpenAI: new account with **$10 credit, which is the hard ceiling for now**. Same key in both `.env` files. Keep a running spend ledger in the change log (tokens x price per job). Stop and flag Vincent at about $8. Embed once at 3072 dims and truncate + renormalise for the 1536/800 benchmark variants rather than embedding three times. Keep eval reruns economical (cache embeddings, rerun only affected cases while iterating, full suite at milestones).
+  - The Supabase secret `OPENAI_API_KEY` used by the live `search` function belongs to the OLD account; leave it alone. Give `search-v2` / `search-eval` their own secret (e.g. `OPENAI_API_KEY_V2`) set to the new key so all new spend lands on the capped account.
+  - Anthropic: key in both `.env` files works **without** the `anthropic-workspace-id` header (the key is workspace-scoped; sending `ANTHROPIC_WORKSPACE_ID` as a header makes it fail with 401). May be used for classification/judging to relieve the OpenAI budget; keep usage modest and logged.
+  - Cohere: production key in both `.env` files, tested working.
+  - App password for local browser testing: a temporary comment on line 3 of `supabase/.env`. Never print or commit it.
+- **Database tier:** stay on the free tier (500MB). Monitor size at each step that adds data; flag Vincent if an upgrade looks warranted, with what it would buy.
 - New enrichment and eval scripts live in the repo (`scripts/`, `eval/`), reading credentials from the existing `.env` files. Raw data stays outside git.
 - Human review steps (mined eval cases, LLM-judge spot checks) are asynchronous: proceed on best-effort ground truth, leave the list for Vincent, apply corrections when they arrive.
 - Keep LLM and embedding spend sensible: batch, cache results in tables, and log token/cost totals for each batch job in the change log.
@@ -223,7 +230,7 @@ Goal: let users explore themes and trends ("what are 2023 grads doing now?", "wh
 
 ### Step 2.1 Design (resolve open questions first, see section 7)
 - [ ] Decide hosting for the agent backend (the Agent SDK needs a Node or Python runtime; Supabase Edge/Deno may not be suitable — evaluate and propose to Vincent).
-- [ ] Anthropic API key: present in both `.env` files, but as tested 2026-10-02 it is not workspace-scoped and fails without an `anthropic-workspace-id` header. Needs a workspace-scoped key or the workspace ID from Vincent.
+- [x] Anthropic API key: working (see section 4; do not send the workspace header).
 - [ ] Until production hosting is decided, run the agent backend locally alongside the local frontend.
 - [ ] Use the latest Claude models; pick per cost/latency.
 
@@ -252,8 +259,8 @@ Goal: let users explore themes and trends ("what are 2023 grads doing now?", "wh
 ## 7. Open questions (ask Vincent when reached; do not block earlier work)
 
 1. (Resolved) Commits: full authority, all on `enhancements`.
-2. Supabase tier: stay on free (500MB) or move to Pro — decide after step 1.3.
-3. Production Cohere key — only if step 1.6 favours the reranker.
+2. (Resolved) Supabase tier: stay free, monitor, flag if an upgrade is warranted.
+3. (Resolved) Cohere production key is in place.
 4. Agent hosting and Anthropic API key — step 2.1.
 5. Re-enrichment cadence for the LinkedIn data (currently Dec 2025 / Jan 2026).
 6. Any ceiling on the number of explained results for very large semantic result sets — decide from eval latency/cost data.
@@ -262,3 +269,4 @@ Goal: let users explore themes and trends ("what are 2023 grads doing now?", "wh
 
 - 2026-10-02: Plan created.
 - 2026-10-02: Replaced the cut-over sign-off gate with isolation (v2-named backend, local-only frontend). All commits on `enhancements`.
+- 2026-10-02: Keys verified (OpenAI new account, $10 ceiling; Cohere production; Anthropic works without workspace header). Free DB tier retained.
