@@ -1,15 +1,20 @@
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
 import SearchExamples from "@/components/SearchExamples";
 import PromptingGuide from "@/components/PromptingGuide";
+import { warmSearch } from "@/services/alumniService";
 
 const LandingPage: React.FC = () => {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    warmSearch();
+  }, []);
 
   const handleSearch = () => {
     if (query.trim()) {

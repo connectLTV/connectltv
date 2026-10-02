@@ -8,7 +8,7 @@ import urllib.request
 
 import lib
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-sonnet-5"  # a strong judge; Haiku mis-judged clear matches
 
 
 def profile_text(p):
@@ -22,15 +22,23 @@ def profile_text(p):
 
 
 def ask(query, profile):
-    body = {"model": MODEL, "max_tokens": 5, "messages": [{"role": "user", "content":
+    body = {"model": MODEL, "max_tokens": 8, "messages": [{"role": "user", "content":
             f"Search query on an alumni directory: \"{query}\"\n\nProfile:\n{profile}\n\n"
-            "Is this person a genuinely relevant result for the query? Be strict: every explicit constraint in the "
-            "query must be satisfied by the profile. Answer with exactly YES or NO."}]}
+            "Would a careful user consider this person a correct result for the query? Every explicit constraint in the "
+            "query must be supported by the profile (a past role counts unless the query says current). "
+            "Answer with exactly YES or NO."}]}
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(),
                                  headers={"x-api-key": lib.ENV["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
                                           "content-type": "application/json"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)["content"][0]["text"].strip().upper().startswith("YES")
+    import time
+    for attempt in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.load(r)["content"][0]["text"].strip().upper().startswith("YES")
+        except Exception:  # noqa: BLE001  (rate limits and transient errors)
+            if attempt == 5:
+                raise
+            time.sleep(5 * (attempt + 1))
 
 
 def judge_run(data, cases, judgments):
@@ -47,12 +55,15 @@ def judge_run(data, cases, judgments):
                 if f'{c["query"]}||{pid}' not in judgments and pid in corpus:
                     todo.add((c["query"], pid))
     print(f"judging {len(todo)} new (query, person) pairs")
-    with cf.ThreadPoolExecutor(4) as ex:
+    failed = 0
+    with cf.ThreadPoolExecutor(3) as ex:
         futs = {ex.submit(ask, q, profile_text(corpus[pid])): (q, pid) for q, pid in todo}
         for f in cf.as_completed(futs):
             q, pid = futs[f]
             try:
                 judgments[f"{q}||{pid}"] = f.result()
             except Exception as e:  # noqa: BLE001
-                print("judge error", e)
+                failed += 1
+    if failed:
+        print(f"WARNING: {failed} pairs could not be judged; rerun with --judge to fill them in")
     return judgments

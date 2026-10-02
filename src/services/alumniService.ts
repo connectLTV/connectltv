@@ -61,6 +61,11 @@ const transformResult = (alumni: Record<string, unknown>, index: number): Alumni
   };
 };
 
+// Fire-and-forget warm-up so the first search after a quiet period is not slowed by a cold database cache
+export const warmSearch = (): void => {
+  supabase.functions.invoke(SEARCH_FUNCTION, { body: { warm: true } }).catch(() => undefined);
+};
+
 // Streaming search function with incremental result loading
 export const searchAlumniStreaming = async (
   query: string,

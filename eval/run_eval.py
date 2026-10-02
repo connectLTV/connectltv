@@ -56,6 +56,8 @@ def run_query(target, case, timeout=75, deadline=180):
                         out["meta"] = {k: v for k, v in ev.items() if k != "type"}
                     elif ev["type"] == "complete":
                         out["debug"] = ev.get("debug")
+                        if (out["debug"] or {}).get("judge_errors"):
+                            out["error"] = f"{out['debug']['judge_errors']} judging call(s) failed"
                     elif ev["type"] == "error":
                         out["error"] = ev.get("message")
     except Exception as e:  # noqa: BLE001
@@ -85,8 +87,8 @@ def score_case(case, runs, judgments):
         m["n_returned"].append(len(ids))
         if case["type"] == "open":
             judged = [judgments.get(f'{case["query"]}||{i}') for i in ids]
-            judged = [j for j in judged if j is not None]
-            m["precision"].append(sum(judged) / len(judged) if judged else None)
+            # Only score a run once every returned person has a verdict; partial judging would bias the number
+            m["precision"].append(sum(judged) / len(judged) if judged and None not in judged else None)
             continue
         got = [i for i in ids if i in exp]
         m["recall"].append(len(got) / len(exp))

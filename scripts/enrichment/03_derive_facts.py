@@ -55,7 +55,7 @@ PEDIGREE = [("mbb", r"mckinsey|bain (&|and) co|^bain$|boston consulting|\bbcg\b"
 
 DEGREE_LEVELS = [
     ("phd", r"ph\.?\s?d|doctor of philosophy|dphil|doctorate"),
-    ("jd", r"\bj\.?d\.?\b|juris doctor"),
+    ("jd", r"\bj\.?d\.?\b|juris doctor|\bll\.?\s?[bm]\.?\b|bachelor of laws?|master of laws?"),  # any law degree
     ("md", r"\bm\.?d\.?\b|doctor of medicine|\bmbbs\b"),
     ("mba", r"\bm\.?b\.?a\b|master of business administration"),
     ("master", r"master|\bm\.?s\.?c?\.?\b|\bm\.?a\.?\b|\bm\.?eng\b|\bmpp\b|\bmpa\b|\bmph\b|\bmphil\b|\bll\.?m\b|\bs\.?m\.?\b|\bm\.?p\.?a\b"),
@@ -110,7 +110,8 @@ def major_category(field, degree):
 def main(dry_run=False):
     corpus = lib.load_corpus()
     raw = load_raw_by_person(corpus)
-    title_labels = load_cache("title_labels")
+    title_labels = load_cache("title_labels_v2")
+    investor_firms = load_cache("investor_firms")
     industry_groups = load_cache("industry_groups")
     person_labels = load_cache("person_labels")
 
@@ -165,16 +166,28 @@ def main(dry_run=False):
             lab = title_labels.get("||".join(((e.get("title") or "").strip(), e.get("company_industry") or "")))
             if not lab:
                 missing_labels += 1
-                lab = ["other", "mid", "full_time", 0, 0, "none"]
-            function, seniority, role_type, is_founder, is_ft, inv = lab
+                lab = {"function": "other", "seniority": "mid", "role_type": "full_time", "is_founder": False,
+                       "is_founding_team": False, "is_investing_role": False}
+            function, seniority, role_type = lab["function"], lab["seniority"], lab["role_type"]
+            is_founder, is_ft = lab["is_founder"], lab["is_founding_team"]
             emp = r.get("employmentType")
             if emp == "Internship":
-                role_type = "internship"
+                role_type, seniority = "internship", "intern"
+            # Investor type comes from the firm (a title cannot tell VC from PE); angel investing from the title.
+            inv = None
+            if lab["is_investing_role"]:
+                firm_type = investor_firms.get((e.get("company") or "").strip())
+                if rx(r"\bangel\b").search(e.get("title") or ""):
+                    inv = "angel"
+                elif firm_type and firm_type != "not_investor":
+                    inv = firm_type
+                elif firm_type != "not_investor":
+                    inv = "other_investing"
             key = exp_company.get(e["exp_id"])
             c = comp_by_key.get(key, {})
             row = {"exp_id": e["exp_id"], "person_id": pid, "company_id": ids.get(key), "function": function,
                    "seniority": seniority, "role_type": role_type, "is_founder": bool(is_founder) and role_type != "student_activity",
-                   "is_founding_team": bool(is_ft), "investor_type": None if inv in ("none", None) else inv,
+                   "is_founding_team": bool(is_ft), "investor_type": inv,
                    "hbs_timing": timing(e.get("start_date"), y), "is_first_post_hbs": False,
                    "is_current": bool(e.get("is_current")),
                    "location_country": ISO.get(r.get("jobLocationCountry")), "employment_type": emp,

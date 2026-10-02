@@ -49,8 +49,9 @@ Search query: "${query}"
 ${satisfied ? `Every candidate already satisfies these constraints (verified from structured data, do not re-check them): ${satisfied}\nJudge only the rest of the query.` : ""}
 
 Rules:
-- Return ONLY candidates who genuinely match the query. Leave out anyone who does not; never list a candidate with a negative explanation.
-- Understand the intent: treat explicit or strongly implied constraints as required.
+- Return ONLY candidates who clearly match the query. Leave out anyone who does not; never list a candidate with a negative explanation.
+- Be strict. The profile must show direct evidence for every part of the query. A loosely related profile, an adjacent industry, or a single passing mention is not a match.
+- "working in / building / at" refers to what the person does now or did as a substantial role, not a brief internship, unless the query says otherwise.
 - Order matches from most to least relevant.
 - "why": one short sentence of positive, specific evidence from the profile.
 
@@ -82,6 +83,16 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
+    if (body.warm) {
+      // Cache warm-up (called when the search page loads): touch the vector tables so the first real search
+      // does not pay the cold-read cost. No LLM or embedding calls.
+      const unit = new Array(EMBEDDING_DIMS).fill(0);
+      unit[0] = 1;
+      await supabase.rpc("v2_hybrid_search", { query_embedding: JSON.stringify(unit), keyword_query: "", f: {}, match_count: 1, doc_chars: 1 });
+      return new Response(JSON.stringify({ warmed: true, ms: Date.now() - startTime }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     query = String(body.query || "").trim();
     const stream: boolean = body.stream !== false;
     const trackIds: string[] = body.track_person_ids || [];
@@ -213,22 +224,29 @@ serve(async (req) => {
       // One LLM call judges a batch; matches are reported through onItem as they stream in.
       const judgeBatch = async (batch: Candidate[], onItem: (c: Candidate, why: string) => void): Promise<number> => {
         const payload = batch.map((c, i) => ({ id: i + 1, profile: c.profile_doc.slice(0, DOC_CHARS) }));
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${openAiKey()}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: LLM_MODEL,
-            temperature: 0.2,
-            stream: true,
-            stream_options: { include_usage: true },
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: JUDGE_SYSTEM(query, satisfied) },
-              { role: "user", content: JSON.stringify({ candidates: payload }) },
-            ],
-          }),
+        const requestBody = JSON.stringify({
+          model: LLM_MODEL,
+          temperature: 0.2,
+          stream: true,
+          stream_options: { include_usage: true },
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: JUDGE_SYSTEM(query, satisfied) },
+            { role: "user", content: JSON.stringify({ candidates: payload }) },
+          ],
         });
-        if (!res.ok || !res.body) throw new Error(`LLM API error: ${await res.text()}`);
+        let res: Response | null = null;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${openAiKey()}`, "Content-Type": "application/json" },
+            body: requestBody,
+          });
+          if (res.status !== 429 && res.status < 500) break;
+          await res.body?.cancel();
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); // rate limited: back off and retry
+        }
+        if (!res || !res.ok || !res.body) throw new Error(`LLM API error: ${res ? await res.text() : "no response"}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         const pattern = /\{\s*"id"\s*:\s*"?(\d+)"?\s*,\s*"why"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
