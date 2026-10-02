@@ -20,10 +20,11 @@ const EMBEDDING_MODEL = "text-embedding-3-large";
 const EMBEDDING_DIMS = 800;
 const RETRIEVE_COUNT = 180; // people fetched from hybrid retrieval
 const BATCH_SIZE = 20; // candidates per LLM judging call
+const FIRST_BATCH_SIZE = 10; // smaller first call so the first result appears sooner
 const BATCHES_PER_ROUND = 3; // judged concurrently
 const MAX_JUDGED = 180; // adaptive cutoff ceiling
 const CONTINUE_MATCH_RATE = 0.5; // keep judging while the last batch of a round is still this relevant
-const DOC_CHARS = 1400; // profile text shown to the judge per candidate
+const DOC_CHARS = 1200; // profile text shown to the judge per candidate
 const PRICE = { llmIn: 0.4, llmOut: 1.6, embed: 0.13, cohereSearch: 0.002 }; // USD per 1M tokens / per search unit
 
 interface Candidate {
@@ -170,6 +171,7 @@ serve(async (req) => {
         f: translation.filters,
         match_count: RETRIEVE_COUNT,
         keyword_weight: options.keyword_weight ?? 1.0,
+        doc_chars: reranker === "cohere" ? 4000 : DOC_CHARS,
       });
       if (error) throw new Error(`Hybrid search error: ${error.message}`);
       let candidates: Candidate[] = retrieved || [];
@@ -268,8 +270,9 @@ serve(async (req) => {
       while (offset < candidates.length && offset < MAX_JUDGED) {
         const batches: Candidate[][] = [];
         for (let b = 0; b < BATCHES_PER_ROUND && offset < candidates.length && offset < MAX_JUDGED; b++) {
-          batches.push(candidates.slice(offset, offset + BATCH_SIZE));
-          offset += BATCH_SIZE;
+          const size = offset === 0 ? FIRST_BATCH_SIZE : BATCH_SIZE;
+          batches.push(candidates.slice(offset, offset + size));
+          offset += size;
         }
         const buffers: Array<Array<[Candidate, string]>> = batches.map(() => []);
         const finished = batches.map(() => false);
