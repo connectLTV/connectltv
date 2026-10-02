@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.search]
 verify_jwt = false
+
+[functions.search-eval]
+verify_jwt = false

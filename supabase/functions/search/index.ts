@@ -52,6 +52,16 @@ const generateExperienceSummary = (experiences: Array<{title?: string; company?:
   return summary ? summary + '.' : '';
 };
 
+// Best-effort query logging; must never fail or block a search
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const logSearch = async (supabase: any, row: Record<string, unknown>) => {
+  try {
+    await supabase.from('search_logs').insert({ function_name: 'search', route: 'v1', ...row });
+  } catch (e) {
+    console.error('search_logs insert failed', e);
+  }
+};
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -372,6 +382,7 @@ Example: {"results": [{"person_id": "uuid-here", "why_relevant": "Worked at Open
           let gptBuffer = '';  // Buffer for GPT streaming chunks
           let jsonBuffer = ''; // Buffer for accumulating JSON content
           let resultCount = 0;
+          let firstResultMs: number | null = null;
           const emittedPersonIds = new Set<string>();
 
           // Regex to match complete result objects
@@ -426,6 +437,7 @@ Example: {"results": [{"person_id": "uuid-here", "why_relevant": "Worked at Open
                         if (enrichedPerson) {
                           resultCount++;
                           const timestamp = Date.now() - startTime;
+                          if (firstResultMs === null) firstResultMs = timestamp;
 
                           logStep(`RESULT ${resultCount} received`, {
                             person_id: personId,
@@ -475,6 +487,7 @@ Example: {"results": [{"person_id": "uuid-here", "why_relevant": "Worked at Open
             };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(completeEvent)}\n\n`));
             logStep("SEARCH COMPLETE", { total_results: resultCount, total_time_ms: Date.now() - startTime });
+            await logSearch(supabase, { query, result_count: resultCount, time_to_first_result_ms: firstResultMs, total_ms: Date.now() - startTime });
 
           } catch (error) {
             logStep("Streaming error", { error: String(error) });
@@ -484,6 +497,7 @@ Example: {"results": [{"person_id": "uuid-here", "why_relevant": "Worked at Open
               timestamp_ms: Date.now() - startTime
             };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+            await logSearch(supabase, { query, result_count: resultCount, time_to_first_result_ms: firstResultMs, total_ms: Date.now() - startTime, error: String(error) });
           }
 
           controller.close();
@@ -529,6 +543,7 @@ Example: {"results": [{"person_id": "uuid-here", "why_relevant": "Worked at Open
 
     logStep("SEARCH COMPLETE", { final_result_count: finalResults.length });
     debug.total_time_ms = Date.now() - startTime;
+    await logSearch(supabase, { query, result_count: finalResults.length, total_ms: debug.total_time_ms });
 
     return new Response(JSON.stringify({ results: finalResults, debug }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
