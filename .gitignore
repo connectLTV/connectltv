@@ -33,3 +33,8 @@ supabase/.temp/
 
 # Claude Code
 CLAUDE.md
+
+# Eval harness: raw data and run outputs contain alumni data
+eval/.cache/
+eval/runs/
+__pycache__/
