@@ -38,3 +38,4 @@ CLAUDE.md
 eval/.cache/
 eval/runs/
 __pycache__/
+scripts/enrichment/.cache/

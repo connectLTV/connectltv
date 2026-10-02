@@ -33,28 +33,8 @@ export interface SearchCallbacks {
 
 export type SearchPhase = 'idle' | 'searching' | 'streaming' | 'complete' | 'error';
 
-// Helper function to extract function from title
-const extractFunction = (title: string): string | undefined => {
-  const functions: Record<string, string[]> = {
-    engineering: ['Engineer', 'Developer', 'CTO', 'Technical', 'Architecture'],
-    product: ['Product', 'PM', 'UX', 'User'],
-    marketing: ['Marketing', 'Growth', 'Brand', 'CMO'],
-    sales: ['Sales', 'Business Development', 'Account', 'Revenue'],
-    operations: ['Operations', 'COO', 'Ops', 'Supply'],
-    finance: ['Finance', 'CFO', 'Financial', 'Accounting'],
-    founder: ['Founder', 'CEO', 'Owner', 'Entrepreneur'],
-  };
-
-  const titleLower = title.toLowerCase();
-
-  for (const [func, keywords] of Object.entries(functions)) {
-    if (keywords.some(keyword => titleLower.includes(keyword.toLowerCase()))) {
-      return func.charAt(0).toUpperCase() + func.slice(1);
-    }
-  }
-
-  return undefined;
-};
+// Search edge function. v2 = structured filters + hybrid retrieval (see docs/MASTER_PLAN.md).
+const SEARCH_FUNCTION = import.meta.env.VITE_SEARCH_FUNCTION || 'search-v2';
 
 // Transform raw result to Alumni interface
 const transformResult = (alumni: Record<string, unknown>, index: number): Alumni => {
@@ -72,7 +52,7 @@ const transformResult = (alumni: Record<string, unknown>, index: number): Alumni
     classYear: (alumni.class_year || '') as string,
     instructor: (alumni.section || '') as string,
     industry: (alumni.current_industry || '') as string,
-    function: extractFunction(currentTitle),
+    function: (alumni.function as string) || undefined,
     relevanceReason: (alumni.why_relevant || alumni.experience_summary || alumni.headline || '') as string,
     headline: (alumni.headline || '') as string,
     education_summary: (alumni.education_summary || '') as string,
@@ -93,7 +73,7 @@ export const searchAlumniStreaming = async (
     const supabaseUrl = "https://bcpwjwfubnpchoscvrum.supabase.co";
     const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjcHdqd2Z1Ym5wY2hvc2N2cnVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk1ODgyMDEsImV4cCI6MjA3NTE2NDIwMX0.yTegOVlV_yy1rsVorfBLbURcxuUBApNrpFsi8-P5bJA";
 
-    const response = await fetch(`${supabaseUrl}/functions/v1/search`, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/${SEARCH_FUNCTION}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -165,8 +145,8 @@ export const searchAlumni = async (query: string): Promise<Alumni[]> => {
   console.log("Searching alumni with query:", query);
 
   try {
-    console.log("Calling /search edge function with query:", query);
-    const { data: searchResponse, error: functionError } = await supabase.functions.invoke('search', {
+    console.log(`Calling /${SEARCH_FUNCTION} edge function with query:`, query);
+    const { data: searchResponse, error: functionError } = await supabase.functions.invoke(SEARCH_FUNCTION, {
       body: { query, stream: false }
     });
 

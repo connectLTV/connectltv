@@ -202,15 +202,27 @@ def main():
     ap.add_argument("--concurrency", type=int, default=3)
     ap.add_argument("--rescore", help="label of a saved run to rescore")
     ap.add_argument("--judge", action="store_true", help="LLM-judge open-ended results (cached)")
+    ap.add_argument("--retry-errors", help="label of a saved run: rerun only the requests that errored")
     args = ap.parse_args()
 
     cases = [json.loads(l) for l in (lib.EVAL_DIR / "queries.jsonl").read_text().splitlines() if l.strip()]
     lib.RUNS_DIR.mkdir(exist_ok=True)
-    label = args.rescore or args.label or args.target
+    label = args.rescore or args.retry_errors or args.label or args.target
     run_path = lib.RUNS_DIR / f"{label}.json"
 
     if args.rescore:
         data = json.loads(run_path.read_text())
+    elif args.retry_errors:
+        data = json.loads(run_path.read_text())
+        by_id = {c["id"]: c for c in cases}
+        jobs = [(cid, i) for cid, runs in data["results"].items() for i, r in enumerate(runs) if r["error"]]
+        print(f"retrying {len(jobs)} errored requests")
+        with cf.ThreadPoolExecutor(args.concurrency) as ex:
+            futs = {ex.submit(run_query, data["target"], by_id[cid]): (cid, i) for cid, i in jobs}
+            for f in cf.as_completed(futs):
+                cid, i = futs[f]
+                data["results"][cid][i] = f.result()
+        run_path.write_text(json.dumps(data))
     else:
         todo = [c for c in cases if not args.only or c["failure_class"] in args.only.split(",")]
         data = {"target": args.target, "label": label, "runs": args.runs,
