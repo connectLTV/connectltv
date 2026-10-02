@@ -1,247 +1,92 @@
-# New Search Function Deployment Guide
+# Search: architecture and deployment
 
-This guide walks through deploying the new `/search` edge function that uses the normalized database structure (people, experiences, educations, skills, chunks).
+Two search functions are deployed. Production still uses v1 until the cut-over in `docs/CUTOVER.md`.
 
-## Architecture Overview
+| Function | Status | Notes |
+|---|---|---|
+| `search` | live (v1) | Vector search over chunks + GPT rerank. Unchanged apart from query logging. |
+| `search-v2` | deployed, used by the `enhancements` frontend | Structured filters + hybrid retrieval. Described below. |
+| `search-eval` | eval only | Copy of v1 that reports where expected people are lost. |
+| `semantic-search` | dead | Original MVP function; delete at cut-over. |
 
-The new search function implements a sophisticated semantic search pipeline:
+## search-v2 pipeline
 
 ```
-User Query
-    ↓
-1. Generate Embedding (text-embedding-3-large, 2000 dims)
-    ↓
-2. Vector Search on Chunks (top 200 via RPC, HNSW index)
-    ↓
-3. Aggregate Chunks → People (with weighted relevance scoring)
-    ↓
-4. Fetch Full Data (people + experiences + educations)
-    ↓
-5. GPT Reranking (top 30 most relevant)
-    ↓
-6. Merge GPT results with enriched data
-    ↓
-Results
+query
+  |-- translate (gpt-4.1-mini): filters + "complete" flag + semantic text + keywords     } in parallel
+  |-- embed (text-embedding-3-large, 800 dims)                                           }
+  v
+route
+  structured (filters cover the whole request)
+      v2_structured_search(filters) -> every match, richest profiles first, no LLM
+  hybrid / semantic
+      v2_hybrid_search(embedding, keywords, filters)
+          SQL prefilter -> best-chunk similarity + profile-document similarity + keyword rank,
+          fused per person with reciprocal rank fusion (exact scan, no ANN index)
+      optional Cohere rerank (off by default)
+      LLM judges relevance and writes explanations, in rank order, in concurrent batches;
+      keeps going while batches are still mostly relevant (up to 180 people judged)
+  v
+SSE events: start, result (one per person), complete, error   (same contract as v1)
 ```
 
-## Prerequisites
+Key files:
+- `supabase/functions/search-v2/index.ts` — pipeline
+- `supabase/functions/search-v2/translate.ts` — translation prompt, sanitiser, keyword query builder
+- `supabase/migrations/2026100200000*` — tables and SQL functions
+- `scripts/enrichment/` — builds the structured facts and search documents
+- `eval/` — eval harness; `docs/benchmarks/` — benchmark write-ups
 
-1. **Chunks with embeddings** - Run `generate_embeddings.py` first
-2. **Database migration** - Apply the schema with `search_chunks` RPC function
-3. **Environment variables** - Set in Supabase dashboard
+## Data model added for v2
 
-## Step 1: Apply Database Migration
+| Table | Purpose |
+|---|---|
+| `companies`, `schools` | Canonical names and aliases (merges e.g. the BCG name variants), size bucket, industry group |
+| `experience_facts` | Per role: function, seniority, role type, founder / investing flags, investor type, timing relative to HBS |
+| `education_facts` | Per degree: canonical school, degree level, major category |
+| `person_facts` | Per person: founder / investor flags, career archetypes, geography, sector tags, richness score, ... |
+| `person_search` | One document per person: keyword index, embedding, ready-to-return result card |
+| `chunk_vectors` | Compact half-precision copy of chunk embeddings for fast exact scans |
+| `search_logs` | One row per search (query, route, counts, timings; no user identity) |
 
-First, create the `search_chunks` RPC function:
+All new tables have row-level security on with no anon access; edge functions use the service role.
+
+## Deploying
 
 ```bash
-cd /Users/vincenthuang/Documents/connectLTV-project/connectltv
-
-# Apply the migration
-supabase db push
+supabase db push                      # apply migrations
+supabase functions deploy search-v2
 ```
 
-Or apply directly via SQL Editor in Supabase Dashboard:
+Secrets (`supabase secrets list`): `OPENAI_API_KEY_V2` (falls back to `OPENAI_API_KEY`), `COHERE_API_KEY` (only used
+when the reranker is switched on), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. Optional: `SEARCH_RERANKER=cohere`.
 
-```sql
-CREATE OR REPLACE FUNCTION search_chunks(
-  query_embedding vector(2000),
-  match_count int DEFAULT 200
-)
-RETURNS TABLE (
-  chunk_id uuid,
-  person_id uuid,
-  chunk_type text,
-  text_raw text,
-  text_norm text,
-  similarity float8
-)
-LANGUAGE sql STABLE
-AS $$
-  SELECT
-    chunk_id,
-    person_id,
-    chunk_type,
-    text_raw,
-    text_norm,
-    1 - (embedding <=> query_embedding) as similarity
-  FROM chunks
-  WHERE embedding IS NOT NULL
-  ORDER BY embedding <=> query_embedding
-  LIMIT match_count;
-$$;
-```
-
-## Step 2: Set Environment Variables
-
-In your Supabase Dashboard → Settings → Edge Functions → Manage secrets:
+## Testing
 
 ```bash
-OPENAI_API_KEY=your_openai_api_key_here
-SUPABASE_URL=https://bcpwjwfubnpchoscvrum.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+python3 eval/query.py "climate tech founders"            # one query with routing and timing breakdown
+python3 eval/translation_eval.py                         # translation only (cheap)
+python3 eval/run_eval.py --target search-v2 --label my-change --judge
+python3 eval/inspect_run.py my-change                    # cases that still miss or over-return
 ```
 
-Or use Supabase CLI:
+Scorecards are written to `eval/scorecards/`. Raw runs (`eval/runs/`) and data caches are gitignored because they
+contain alumni data.
 
-```bash
-supabase secrets set OPENAI_API_KEY=your_key_here
-```
+## Performance and cost (eval suite, 131 queries)
 
-## Step 3: Deploy the Edge Function
+| | v1 baseline | search-v2 |
+|---|---|---|
+| Time to first result, median / p95 | 1.8 s / 2.6 s | 1.2 s / 3.2 s |
+| Total time, median / p95 | 3.3 s / 13.3 s | 1.3 s / 7.0 s |
+| Mean LLM cost per query | $0.0036 | $0.0021 |
 
-```bash
-cd /Users/vincenthuang/Documents/connectLTV-project/connectltv
+Structured queries are fastest (about 1 s, a fraction of a cent). Topic queries take about 3.5 s to the first result
+and cost 1-3 cents when many people are judged.
 
-# Deploy the new search function
-supabase functions deploy search
+The first search after a quiet period can be several seconds slower while the database reads the vector table from
+disk; the landing page sends a warm-up request to hide this.
 
-# Verify it's deployed
-supabase functions list
-```
+## Refreshing data
 
-## Step 4: Test the Function
-
-### Using curl:
-
-```bash
-curl -i --location --request POST \
-  'https://bcpwjwfubnpchoscvrum.supabase.co/functions/v1/search' \
-  --header 'Content-Type: application/json' \
-  --header 'Authorization: Bearer YOUR_ANON_KEY' \
-  --data '{"query":"founders in AI and machine learning"}'
-```
-
-### Using the Supabase Dashboard:
-
-1. Go to Edge Functions → search
-2. Click "Invoke Function"
-3. Enter test payload:
-   ```json
-   {
-     "query": "product managers with experience in fintech"
-   }
-   ```
-
-## Frontend Integration
-
-The frontend uses the Supabase client library to invoke the function:
-
-```typescript
-const { data, error } = await supabase.functions.invoke('search', {
-  body: { query }
-});
-```
-
-See `src/services/alumniService.ts` for the full implementation.
-
-## Key Features
-
-### 1. **Relevance Scoring**
-- Each person gets a relevance score based on their chunks
-- Combines max weighted similarity (80%) and mean of top 3 (20%)
-- Skills chunks are weighted at 0.5x to prevent skill-heavy profiles from dominating
-- Minimum threshold of 0.35 required for GPT consideration
-
-### 2. **Smart Aggregation**
-- Top 200 chunks aggregated by person
-- Top 50 people (above threshold) sent to GPT for reranking
-- Reduces GPT context size while maintaining quality
-
-### 3. **Comprehensive Data**
-- Includes all experiences and educations
-- Provides top matching chunks for context
-- Enriched profiles merged back after GPT reranking
-
-### 4. **Robust Fallback**
-- If GPT fails, returns results ranked by relevance score
-- Graceful degradation ensures search always works
-- Detailed error logging for debugging
-
-### 5. **Optimized Performance**
-- HNSW index on embeddings for fast vector search
-- Single RPC call for vector search
-- Parallel fetching of people/experiences/educations
-- Batch processing minimizes database round trips
-
-## Response Format
-
-```json
-{
-  "results": [
-    {
-      "person_id": "uuid",
-      "first_name": "John",
-      "last_name": "Doe",
-      "email": "john@example.com",
-      "linkedin_url": "https://linkedin.com/in/johndoe",
-      "headline": "Founder & CEO at AI Startup",
-      "class_year": "2024",
-      "section": "Christina Wallace",
-      "location": "San Francisco, CA",
-      "current_company": "AI Startup",
-      "current_title": "Founder & CEO",
-      "current_industry": "Technology",
-      "education_summary": "Harvard Business School. MIT.",
-      "experience_summary": "CEO at AI Startup. Product Manager at Google.",
-      "why_relevant": "Founder with AI/ML expertise matching your search."
-    }
-    // ... up to 30 results
-  ],
-  "debug": {
-    "total_time_ms": 3500,
-    "steps": [...]
-  }
-}
-```
-
-## Monitoring
-
-Check function logs in Supabase Dashboard:
-- Edge Functions → search → Logs
-
-Look for these log markers:
-- `STEP 1: Generate Query Embedding`
-- `STEP 2: Vector Search on Chunks`
-- `STEP 3: Aggregate Chunks by Person`
-- `STEP 4: Fetch Full Person Data`
-- `STEP 5: Enrich People Data`
-- `STEP 6: GPT Reranking`
-- `SEARCH COMPLETE`
-
-## Troubleshooting
-
-### Issue: "search_chunks function not found"
-**Solution**: Apply the database migration (Step 1)
-
-### Issue: "OPENAI_API_KEY is not configured"
-**Solution**: Set environment variable in Supabase (Step 2)
-
-### Issue: "No results returned"
-**Solution**: Ensure chunks have embeddings. Run `generate_embeddings.py`
-
-### Issue: "Vector dimension mismatch"
-**Solution**: Ensure chunks.embedding is vector(2000) and query uses 2000 dimensions
-
-### Issue: GPT reranking fails
-**Solution**: Check logs. Function will use fallback ranking automatically
-
-### Issue: Location/industry/company fields are empty
-**Solution**: Ensure GPT prompt includes person_id so merge lookup succeeds
-
-## Performance Expectations
-
-- **Query embedding**: ~200-500ms
-- **Vector search**: ~50-150ms (HNSW index)
-- **Data fetching**: ~50-150ms (parallel queries)
-- **GPT reranking**: ~2-5 seconds
-- **Total**: ~3-6 seconds end-to-end
-
-## Cost Estimates (per search)
-
-- **OpenAI Embedding**: ~$0.0001 (text-embedding-3-large, 2000 dims)
-- **OpenAI GPT**: ~$0.001-0.003 (gpt-4o-mini)
-- **Supabase**: Included in plan
-- **Total per search**: ~$0.001-0.004
-
-At 1000 searches/month: ~$1-4/month in OpenAI costs
+See "Refreshing data later" in `docs/CUTOVER.md`.

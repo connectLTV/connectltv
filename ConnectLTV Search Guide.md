@@ -2,93 +2,80 @@
 
 ## How Search Works
 
-ConnectLTV uses AI-powered semantic search to find alumni whose profiles are conceptually similar to your query. When you search, the system:
+ConnectLTV understands your query in two parts:
 
-1. Converts your query into a semantic representation
-2. Finds alumni with similar content in their profiles, work history, education, and skills
-3. Sends the top 50 candidates to GPT for intelligent reranking
-4. Returns up to 30 relevant alumni with explanations of why they match
+1. **Facts it can check exactly** — class year, LTV instructor, location, companies, job titles, schools, degrees, founder and investor status, company size, and more. These are matched against structured data, so you get every alumnus who fits, not a sample.
+2. **Everything else** — topics, sectors and expertise such as "fintech" or "climate". These are matched by meaning against each profile, then checked by AI, which also writes a short explanation of why each person matches.
 
-**What this means:** The search finds conceptual matches—"machine learning" will match profiles mentioning "AI" or "data science" even if they don't use your exact words.
+**What this means:** "Class of 2025" or "product managers at Google" returns the complete list. "Founders in climate tech" first narrows to founders exactly, then finds the ones whose profiles are about climate.
 
 ---
 
 ## What You Can Search For
 
-### Roles & Titles
+### Class, Instructor and Location
 
-Search for alumni by their job titles (current or past):
-- "founders" or "CEOs"
-- "product managers"
-- "software engineers"
-- "venture capitalists" or "investors"
-- "consultants"
-- "investment bankers"
+- "Class of 2025" or "alumni who graduated before 2015"
+- "alumni who took LTV with Christina Wallace"
+- "alumni based in London" or "in the Bay Area"
 
-### Industries
+### Companies and Roles
 
-Search by company industry. These work best when they match standard LinkedIn industry categories:
-- "healthcare" or "biotechnology"
-- "financial services"
-- "technology" or "software"
-- "consulting"
-- "consumer goods"
-- "real estate"
+Search for experience at specific companies, now or in the past:
+- "McKinsey alumni" or "people who worked at Google"
+- "software engineers at McKinsey" — a title and a company together
+- "alumni currently working at Stripe" — current roles only
+- "people who interned at Tesla"
 
-> **Note:** Niche terms like "climate tech" or "web3" will only match if alumni mention them in their profile descriptions.
+Common abbreviations work: "BCG", "JPMorgan", "AWS", "Facebook" (also finds Meta).
 
-### Companies
+### Founders, Investors and Startups
 
-Search for experience at specific companies:
-- "Google" or "McKinsey" or "Goldman Sachs"
-- Any company name that appears in alumni work history
+- "founders" or "alumni running their own startup right now"
+- "technical founders"
+- "VCs" or "private equity investors in London"
+- "alumni who joined a startup right after graduating"
+- "alumni working at large companies" — companies are grouped as startup (up to 50 people), growth (51-1,000) and large (over 1,000)
+
+### Education and Background
+
+- "Stanford graduates" or "MIT graduates who worked at Google"
+- "people who studied computer science"
+- "alumni with a law degree" or "with a PhD"
+- "alumni who served in the military"
+- "people who came from consulting before HBS"
 
 ### Skills
 
-Search for specific skills or expertise areas:
-- "Python" or "SQL"
-- "financial modeling"
-- "product strategy"
-- "venture capital"
-- "private equity"
-- "marketing"
-- "operations"
+Ask for a skill explicitly to match LinkedIn skills sections:
+- "alumni with Tableau skills"
+- "alumni with Six Sigma skills"
 
-Skills are drawn from LinkedIn skills sections.
+### Topics, Sectors and Expertise
 
-### Education
-
-Search by school, degree, or field of study:
-- "Stanford" or "MIT" or "Harvard"
-- "MBA" or "PhD"
-- "computer science" or "engineering" or "economics"
-
-### Location
-
-Search for alumni in specific areas:
-- "San Francisco" or "Bay Area"
-- "New York"
-- "Boston"
-- "Los Angeles"
-- "London"
+Anything that is not a fixed fact is matched by meaning:
+- "people working in crypto or web3"
+- "alumni with machine learning and AI expertise"
+- "growth marketing leaders"
+- "people building in edtech"
 
 ---
 
 ## Combining Search Terms
 
-You can include multiple concepts in a single query. The search will find profiles that are semantically similar to your overall query.
+You can combine facts and topics in one query. Facts are applied exactly; the topic is then matched within that group.
 
 **Examples that work well:**
-- "I'm looking for founders in healthcare or biotech startups" — matches founder titles + healthcare industry
-- "Find alumni with product management experience at Google or Meta" — matches PM roles + specific companies
-- "Show me VCs and investors based in the Bay Area" — matches investor titles + SF location
-- "Looking for alumni with machine learning and AI expertise" — matches technical skills
-- "Show me Stanford or MIT alumni working in fintech" — matches education + financial services
+- "founders in healthcare or biotech startups" — founders, then healthcare or biotech
+- "Class of 2023 alumni based in London who worked at Google" — three exact facts combined
+- "VCs and investors based in the Bay Area" — investors in one location
+- "Stanford or MIT alumni working in fintech" — schools exactly, fintech by meaning
+- "climate tech founders" — founders, then climate
 
 **What to know:**
-- The search finds profiles similar to your whole query, not boolean AND/OR logic
-- More specific queries help narrow results, but very narrow queries may return fewer matches
-- If a query is too specific, try broadening it or searching for individual concepts
+- Requirements are combined with AND; "X or Y" within one requirement works as OR
+- Purely factual queries return everyone who matches, with the most complete profiles first, and no AI explanation
+- Queries with a topic return AI-checked matches, each with an explanation
 
 ---
 
@@ -96,12 +83,13 @@ You can include multiple concepts in a single query. The search will find profil
 
 After results appear, you can narrow them further using filters:
 
-| Filter     | What It Filters               |
-|------------|-------------------------------|
-| Class Year | HBS graduation year           |
-| Location   | Alumni's current location     |
+| Filter | What It Filters |
+|--------|-----------------|
+| Class Year | HBS graduation year |
+| Location | Alumni's current location |
 | Instructor | LTV course section/instructor |
-| Industry   | Current company's industry    |
+| Industry | Current company's industry |
+| Function | Function of the current role |
 
 Filter options are populated based on your search results.
 
@@ -109,11 +97,11 @@ Filter options are populated based on your search results.
 
 ## Search Tips
 
-1. **Start with key concepts:** Focus on the role, industry, company, or skill you're looking for. "VCs in healthcare" is effective.
-2. **Use professional terminology:** Search terms that would appear in LinkedIn profiles work best. "Product manager" works better than "someone who manages products."
-3. **Try variations:** If results aren't ideal, try synonyms or related terms. "Investors" vs "VCs" vs "venture capital" may surface different profiles.
-4. **Broaden if needed:** If you get few results, remove a constraint. "Founders in biotech in Boston" → "Founders in biotech"
-5. **Use filters after searching:** Start with a broader search, then use Class Year, Location, or Industry filters to narrow down.
+1. **Say the facts plainly:** "Class of 2024", "at Google", "based in Boston" are understood exactly.
+2. **Be explicit about current vs past:** "currently at Google" means now; "worked at Google" means any time.
+3. **Add a topic to narrow:** "founders" is a long list; "founders in fintech" is a focused one.
+4. **Try variations for topics:** "climate tech", "clean energy" and "sustainability" may surface different profiles.
+5. **Use filters after searching:** start broader, then narrow by Class Year, Location, Industry or Function.
 
 ---
 
@@ -121,9 +109,9 @@ Filter options are populated based on your search results.
 
 Each alumni result shows:
 - Name and headline
-- Experience summary (AI-generated)
-- Education summary (AI-generated)
-- Why they match (AI-generated relevance explanation)
+- Experience summary
+- Education summary
+- Why they match (AI-generated for topic searches)
 - Email (when available)
 - Class year
 
@@ -137,7 +125,8 @@ The detailed profile view also includes:
 
 ## Limitations
 
-- **Career transitions:** Searching "engineers who became PMs" won't specifically find career changers—it will find people who match "engineer" or "PM" concepts
-- **Company characteristics:** "Startups" or "Fortune 500" aren't tracked fields—these only work if mentioned in profile text
-- **Investment focus:** For VCs, we don't track what sectors they invest in—only their job descriptions
-- **Recency:** Search doesn't distinguish between current and past roles; filters can help narrow by current industry
+- **Profile data is a snapshot:** profiles were collected from LinkedIn in December 2025 and January 2026, so recent job changes may be missing
+- **Company size is today's size:** "startup" means the company has up to 50 people now, not when the person joined
+- **Investment focus:** for investors, we know the type of firm (VC, private equity, growth) but not which sectors they invest in unless the profile says so
+- **Topics depend on profile text:** niche areas only match if the profile mentions them or clearly implies them
+- **Alumni without a LinkedIn profile on file are not included**
